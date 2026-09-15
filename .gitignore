@@ -1,0 +1,39 @@
+﻿# .NET / C# 极简 .gitignore
+
+# 构建输出
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.DotSettings.user
+
+# NuGet
+**/[Pp]ackages/
+*.nupkg
+*.snupkg
+
+# 测试与发布
+TestResults/
+publish/
+*.pubxml
+
+# 本地敏感配置
+appsettings.*.local.json
+secrets.json
+*.pfx
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini

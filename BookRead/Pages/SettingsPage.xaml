@@ -1,0 +1,169 @@
+<UserControl
+    x:Class="BookRead.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{DynamicResource AppBackground}">
+    <UserControl.Resources>
+        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="SettingsNavigationButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="CheckBoxRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="11,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="CheckBoxBox" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource InputBorder}" BorderThickness="1.5">
+                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{DynamicResource AppBackground}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                                </Border>
+                                <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentStringFormat="{TemplateBinding ContentStringFormat}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckBoxBox" Property="Background" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="CheckBoxBox" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CheckBoxRoot" Property="Background" Value="{DynamicResource ButtonHover}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="CheckBoxRoot" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="CheckBoxRoot" Property="Background" Value="{DynamicResource AccentSurface}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CheckBoxRoot" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="164" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
+            <Grid Margin="16,24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="设置" Foreground="{DynamicResource TextPrimary}" FontSize="26" FontWeight="SemiBold" />
+                <StackPanel Grid.Row="1" Margin="0,24,0,0">
+                    <Button x:Name="ShortcutTabButton" Tag="Shortcuts" Style="{StaticResource SettingsNavigationButton}" Click="SettingsTab_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE765;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24" VerticalAlignment="Center" />
+                            <TextBlock Text="快捷键" FontSize="14" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DisplayTabButton" Tag="Display" Style="{StaticResource SettingsNavigationButton}" Click="SettingsTab_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE706;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24" VerticalAlignment="Center" />
+                            <TextBlock Text="显示" FontSize="14" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="36,28,40,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="SettingsSectionTitle" Text="快捷键" Foreground="{DynamicResource TextPrimary}" FontSize="26" FontWeight="SemiBold" />
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,18,8,0">
+                <Grid>
+                    <StackPanel x:Name="ShortcutSettingsPanel">
+                        <TextBlock Text="阅读操作" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="190" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="下一页" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="NextPageTextBox" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="NextPage" />
+                            <TextBlock Text="上一页" Grid.Row="1" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="PreviousPageTextBox" Grid.Row="1" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="PreviousPage" />
+                            <TextBlock Text="下一章" Grid.Row="2" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="NextChapterTextBox" Grid.Row="2" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="NextChapter" />
+                            <TextBlock Text="上一章" Grid.Row="3" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="PreviousChapterTextBox" Grid.Row="3" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="PreviousChapter" />
+                            <TextBlock Text="向下滚动" Grid.Row="4" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="ScrollDownTextBox" Grid.Row="4" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="ScrollDown" />
+                            <TextBlock Text="向上滚动" Grid.Row="5" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="ScrollUpTextBox" Grid.Row="5" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="ScrollUp" />
+                            <TextBlock Text="增大字号" Grid.Row="6" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="IncreaseFontTextBox" Grid.Row="6" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="IncreaseFont" />
+                            <TextBlock Text="减小字号" Grid.Row="7" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="DecreaseFontTextBox" Grid.Row="7" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="DecreaseFont" />
+                            <TextBlock Text="增大行间距" Grid.Row="8" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="IncreaseLineSpacingTextBox" Grid.Row="8" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="IncreaseLineSpacing" />
+                            <TextBlock Text="减小行间距" Grid.Row="9" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="DecreaseLineSpacingTextBox" Grid.Row="9" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="DecreaseLineSpacing" />
+                            <TextBlock Text="透明背景" Grid.Row="10" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="ToggleTransparencyTextBox" Grid.Row="10" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="ToggleTransparency" />
+                            <TextBlock Text="切换主题" Grid.Row="11" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="ToggleThemeTextBox" Grid.Row="11" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="ToggleTheme" />
+                            <TextBlock Text="章节面板" Grid.Row="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="ToggleChapterTextBox" Grid.Row="12" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="ToggleChapter" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel x:Name="DisplaySettingsPanel" Visibility="Collapsed">
+                        <TextBlock Text="阅读界面" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10" />
+                        <CheckBox x:Name="ShowReaderToolbarCheckBox" Style="{StaticResource SettingsCheckBox}" FontSize="13" IsChecked="True">
+                            <StackPanel>
+                                <TextBlock Text="显示阅读页工具栏" />
+                                <TextBlock Text="隐藏后可获得更大的正文阅读区域" Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                <Button Width="78" Height="34" Click="Cancel_Click">取消</Button>
+                <Button Width="78" Height="34" Margin="8,0,0,0" Background="{DynamicResource AccentSurface}" Foreground="{DynamicResource Accent}" Click="Save_Click">保存</Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

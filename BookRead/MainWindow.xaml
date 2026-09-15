@@ -1,0 +1,39 @@
+<Window
+    x:Class="BookRead.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    xmlns:controls="clr-namespace:BookRead.Controls"
+    xmlns:pages="clr-namespace:BookRead.Pages"
+    Title="BookRead · 专注阅读"
+    Icon="readbook.ico"
+    Height="600"
+    Width="500"
+    MinHeight="600"
+    MinWidth="500"
+    ResizeMode="CanResize"
+    AllowsTransparency="True"
+    Background="Transparent"
+    WindowStyle="None"
+    WindowStartupLocation="CenterScreen"
+    Closing="MainWindow_Closing"
+    PreviewKeyDown="MainWindow_PreviewKeyDown"
+    PreviewMouseLeftButtonDown="MainWindow_PreviewMouseLeftButtonDown">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="8" GlassFrameThickness="0" CornerRadius="12" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Border x:Name="WindowFrame" Background="Transparent" CornerRadius="12" SizeChanged="WindowFrame_SizeChanged">
+        <Grid Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="TitleBarRow" Height="64" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <controls:TitleBar x:Name="TitleBarControl" />
+            <Grid Grid.Row="1">
+                <pages:ShelfPage x:Name="ShelfPageControl" />
+                <pages:ReaderPage x:Name="ReaderPageControl" Visibility="Collapsed" />
+                <pages:SettingsPage x:Name="SettingsPageControl" Visibility="Collapsed" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
