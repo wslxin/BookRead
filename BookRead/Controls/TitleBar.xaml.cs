@@ -82,6 +82,26 @@ public partial class TitleBar : System.Windows.Controls.UserControl
     }
 
     /// <summary>
+    /// 切换标题栏所属窗口的置顶状态。
+    /// </summary>
+    /// <param name="sender">触发事件的置顶按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void Topmost_Click(object sender, RoutedEventArgs e)
+    {
+        var window = Window.GetWindow(this);
+        if (window is null)
+        {
+            return;
+        }
+
+        var isTopmost = !window.Topmost;
+        window.Topmost = isTopmost;
+        TopmostIcon.Text = isTopmost ? "\uE77A" : "\uE718";
+        TopmostButton.ToolTip = isTopmost ? "取消置顶" : "置顶窗口";
+    }
+
+    /// <summary>
     /// 关闭标题栏所属窗口。
     /// </summary>
     /// <param name="sender">触发事件的关闭按钮。</param>

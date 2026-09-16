@@ -22,7 +22,7 @@
     <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
         <DockPanel>
             <StackPanel DockPanel.Dock="Bottom" Margin="16,10,16,18">
-                <Button Height="38" Background="{DynamicResource AccentSurface}" Foreground="{DynamicResource Accent}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="ImportBook_Click">
+                <Button Height="38" Background="{DynamicResource AccentSurface}" Foreground="{DynamicResource Accent}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="ImportBook_Click" RenderTransform="{x:Null}">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" Margin="0,0,7,0" VerticalAlignment="Center" />
                         <TextBlock Text="导入本地书籍" VerticalAlignment="Center" />
