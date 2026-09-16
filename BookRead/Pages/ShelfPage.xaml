@@ -28,6 +28,12 @@
                         <TextBlock Text="导入本地书籍" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
+                <TextBlock
+                    Margin="0,7,0,0"
+                    HorizontalAlignment="Center"
+                    Foreground="{DynamicResource TextMuted}"
+                    FontSize="11"
+                    Text="支持 TXT、Markdown、HTML、EPUB、DOCX 格式" />
             </StackPanel>
             <ScrollViewer Padding="8,22">
                 <StackPanel>
