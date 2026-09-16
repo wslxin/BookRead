@@ -273,18 +273,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 打开本地 TXT 文件并切换到阅读页。
+    /// 打开本地书籍文件并切换到阅读页。
     /// </summary>
     /// <param name="sender">触发事件的导入按钮。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    /// <exception cref="IOException">读取文件失败时由阅读页抛出。</exception>
+    /// <exception cref="IOException">读取文件失败时由内容加载器抛出。</exception>
+    /// <exception cref="BookContentLoadException">文件格式不受支持、内容损坏或正文为空时由内容加载器抛出。</exception>
     private async void OpenBook_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "文本书籍|*.txt;*.text|所有文件|*.*",
-            Title = "导入本地 TXT"
+            Filter = "支持的书籍|*.txt;*.text;*.md;*.markdown;*.html;*.htm;*.epub;*.docx|文本文件|*.txt;*.text|Markdown|*.md;*.markdown|网页文件|*.html;*.htm|EPUB 电子书|*.epub|Word 文档|*.docx|所有文件|*.*",
+            Title = "导入本地书籍"
         };
 
         if (dialog.ShowDialog() != true)
@@ -465,7 +466,7 @@ public partial class MainWindow : Window
             new ConfirmationDialogOptions(
                 "从书架移除",
                 $"确定移除《{e.Book.Title}》吗？",
-                "这只会移除书架记录，原始 TXT 文件会保留。",
+                "这只会移除书架记录，原始文件会保留。",
                 ConfirmText: "移除",
                 IsDestructive: true));
         if (!confirmed)
@@ -559,9 +560,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 打开指定 TXT 文件，并将成功打开的书籍新增或更新到持久化书架。
+    /// 打开指定书籍文件，并将成功打开的书籍新增或更新到持久化书架。
     /// </summary>
-    /// <param name="filePath">要打开的 TXT 文件绝对路径。</param>
+    /// <param name="filePath">要打开的书籍文件绝对路径。</param>
     /// <returns>表示打开和保存过程的任务。</returns>
     private async Task OpenAndRememberBookAsync(string filePath)
     {
@@ -579,7 +580,9 @@ public partial class MainWindow : Window
                 savedBook?.PageIndex ?? 0,
                 displayTitle);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or BookContentLoadException)
         {
             MessageBox.Show(
                 $"书籍打开失败：{exception.Message}",
@@ -611,7 +614,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// 将书籍加入书架；相同文件路径已存在时更新显示名称和最近打开时间。
     /// </summary>
-    /// <param name="filePath">已成功打开的 TXT 文件绝对路径。</param>
+    /// <param name="filePath">已成功打开的书籍文件绝对路径。</param>
     /// <param name="displayTitle">书籍在书架和标题栏中的显示名称。</param>
     /// <returns>无。</returns>
     private void AddOrUpdateShelfBook(string filePath, string displayTitle)

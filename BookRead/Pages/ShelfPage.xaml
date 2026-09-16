@@ -25,7 +25,7 @@
                 <Button Height="38" Background="{DynamicResource AccentSurface}" Foreground="{DynamicResource Accent}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="ImportBook_Click">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock Text="导入本地 TXT" VerticalAlignment="Center" />
+                        <TextBlock Text="导入本地书籍" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
             </StackPanel>
@@ -35,12 +35,14 @@
                     <ListBox
                         x:Name="BookList"
                         Background="Transparent"
-                        BorderThickness="0">
+                        BorderThickness="0"
+						ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+						
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Background="Transparent">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
@@ -48,6 +50,7 @@
                                     <Button
                                         Tag="{Binding}"
                                         Padding="0"
+										Margin="0,0,8,0"
                                         HorizontalContentAlignment="Stretch"
                                         Click="OpenShelfBook_Click">
                                         <StackPanel>

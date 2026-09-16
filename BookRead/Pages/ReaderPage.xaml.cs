@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -68,24 +67,25 @@ public partial class ReaderPage : UserControl
     }
 
     /// <summary>
-    /// 打开指定 TXT 文件并更新阅读页面内容。
+    /// 打开指定书籍文件并更新阅读页面内容。
     /// </summary>
-    /// <param name="filePath">要读取的 TXT 文件路径。</param>
+    /// <param name="filePath">要读取的书籍文件路径。</param>
     /// <param name="initialChapterIndex">打开时恢复的章节索引。</param>
     /// <param name="initialPageIndex">打开时恢复的章节内分页索引。</param>
     /// <param name="displayTitle">书架中保存的书籍显示名称；为空时使用文件名。</param>
     /// <returns>表示异步读取过程的任务。</returns>
     /// <exception cref="IOException">文件读取失败时抛出。</exception>
     /// <exception cref="UnauthorizedAccessException">没有权限读取文件时抛出。</exception>
+    /// <exception cref="BookContentLoadException">文件格式不受支持、内容损坏或正文为空时抛出。</exception>
     public async Task LoadBookAsync(
         string filePath,
         int initialChapterIndex = 0,
         int initialPageIndex = 0,
         string? displayTitle = null)
     {
-        string content = await ReadBookContentAsync(filePath);
+        IReadOnlyList<BookChapter> chapters = await BookContentLoader.LoadAsync(filePath);
         _chapters.Clear();
-        _chapters.AddRange(ChapterParser.Parse(content));
+        _chapters.AddRange(chapters);
 
         string title = string.IsNullOrWhiteSpace(displayTitle)
             ? Path.GetFileNameWithoutExtension(filePath)
@@ -96,76 +96,6 @@ public partial class ReaderPage : UserControl
         BuildChapterPanel();
         int chapterIndex = Math.Clamp(initialChapterIndex, 0, _chapters.Count - 1);
         ShowChapter(chapterIndex, initialPageIndex);
-    }
-
-    /// <summary>
-    /// 使用检测到的文本编码异步读取完整书籍内容。
-    /// </summary>
-    /// <param name="filePath">要读取的 TXT 文件路径。</param>
-    /// <returns>书籍的完整文本。</returns>
-    /// <exception cref="IOException">文件读取失败时抛出。</exception>
-    /// <exception cref="UnauthorizedAccessException">没有权限读取文件时抛出。</exception>
-    private static async Task<string> ReadBookContentAsync(string filePath)
-    {
-        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read,
-            bufferSize: 64 * 1024, useAsync: true);
-        using var reader = new StreamReader(stream, DetectEncoding(stream), detectEncodingFromByteOrderMarks: true,
-            bufferSize: 64 * 1024);
-        return await reader.ReadToEndAsync();
-    }
-
-    /// <summary>根据文件 BOM 选择文本编码，未带 BOM 时使用 UTF-8。</summary>
-    /// <param name="stream">待检测的文件流，调用后位置会恢复到开头。</param>
-    /// <returns>检测到的文本编码。</returns>
-    /// <exception cref="IOException">读取文件流失败时抛出。</exception>
-    private static Encoding DetectEncoding(FileStream stream)
-    {
-        Span<byte> bom = stackalloc byte[4];
-        int read = stream.Read(bom);
-        stream.Position = 0;
-
-        if (read >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
-        {
-            return new UTF8Encoding(false);
-        }
-
-        if (read >= 2 && bom[0] == 0xFF && bom[1] == 0xFE)
-        {
-            return Encoding.Unicode;
-        }
-
-        if (read >= 2 && bom[0] == 0xFE && bom[1] == 0xFF)
-        {
-            return Encoding.BigEndianUnicode;
-        }
-
-        byte[] sample = new byte[Math.Min(stream.Length, 64 * 1024)];
-        int sampleLength = stream.Read(sample, 0, sample.Length);
-        stream.Position = 0;
-        if (IsValidUtf8(sample, sampleLength))
-        {
-            return new UTF8Encoding(false, true);
-        }
-
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        return Encoding.GetEncoding(936);
-    }
-
-    /// <summary>验证指定字节序列是否符合 UTF-8 编码规则。</summary>
-    /// <param name="bytes">待验证的字节数组。</param>
-    /// <param name="length">参与验证的字节数。</param>
-    /// <returns>字节序列有效时返回 true，否则返回 false。</returns>
-    private static bool IsValidUtf8(byte[] bytes, int length)
-    {
-        try
-        {
-            new UTF8Encoding(false, true).GetString(bytes, 0, length);
-            return true;
-        }
-        catch (DecoderFallbackException)
-        {
-            return false;
-        }
     }
 
     /// <summary>为当前书籍创建可点击的章节目录。</summary>

@@ -3,7 +3,7 @@ namespace BookRead.Models;
 /// <summary>
 /// 表示持久化在本地书架中的一本书。
 /// </summary>
-/// <param name="FilePath">原始 TXT 文件的绝对路径。</param>
+/// <param name="FilePath">原始书籍文件的绝对路径。</param>
 /// <param name="Title">书籍显示名称。</param>
 /// <param name="ImportedAt">首次导入时间。</param>
 /// <param name="LastOpenedAt">最近打开时间。</param>
