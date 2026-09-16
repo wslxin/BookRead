@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         ShelfPageControl.ImportRequested += OpenBook_Click;
         ShelfPageControl.BookOpenRequested += ShelfPageControl_BookOpenRequested;
         ShelfPageControl.BookRemovalRequested += ShelfPageControl_BookRemovalRequested;
+        ShelfPageControl.BookRenameRequested += ShelfPageControl_BookRenameRequested;
         ShelfPageControl.BookLocationRequested += ShelfPageControl_BookLocationRequested;
         ReaderPageControl.ProgressChanged += ReaderPageControl_ProgressChanged;
         ReaderPageControl.BookInfoChanged += ReaderPageControl_BookInfoChanged;
@@ -251,7 +252,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 将用户发起的窗口关闭操作转换为隐藏到系统托盘。
+    /// 根据用户设置将窗口关闭操作转换为隐藏到系统托盘或直接退出应用。
     /// </summary>
     /// <param name="sender">接收关闭事件的主窗口。</param>
     /// <param name="e">包含是否取消关闭状态的事件参数。</param>
@@ -259,7 +260,7 @@ public partial class MainWindow : Window
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         CloseTrayMenu();
-        if (!_isExiting)
+        if (!_isExiting && _shortcutSettings.MinimizeToTrayOnClose)
         {
             e.Cancel = true;
             Hide();
@@ -436,7 +437,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 从本地存储加载阅读页配置，读取失败时使用默认配置。
+    /// 从本地存储加载应用配置，读取失败时使用默认配置。
     /// </summary>
     /// <returns>无。</returns>
     private void LoadShortcutSettings()
@@ -500,6 +501,64 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 修改书架中指定书籍的显示名称，并在持久化成功后刷新书架。
+    /// </summary>
+    /// <param name="sender">发起请求的书架页面。</param>
+    /// <param name="e">包含待重命名书籍的事件参数。</param>
+    /// <returns>无。</returns>
+    private async void ShelfPageControl_BookRenameRequested(object? sender, BookOpenRequestedEventArgs e)
+    {
+        int bookIndex = _shelfBooks.FindIndex(book =>
+            string.Equals(book.FilePath, e.Book.FilePath, StringComparison.OrdinalIgnoreCase));
+        if (bookIndex < 0)
+        {
+            return;
+        }
+
+        string? newTitle = RenameBookDialog.ShowFor(this, _shelfBooks[bookIndex].Title);
+        if (newTitle is null ||
+            string.Equals(newTitle, _shelfBooks[bookIndex].Title, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // 先保存候选列表，确保写入失败时书架记录和界面都保持原名称。
+        List<ShelfBook> updatedBooks = _shelfBooks.ToList();
+        updatedBooks[bookIndex] = updatedBooks[bookIndex] with
+        {
+            Title = newTitle
+        };
+
+        try
+        {
+            await _bookShelfStore.SaveAsync(updatedBooks);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                this,
+                $"书籍重命名失败：{exception.Message}",
+                "BookRead",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        _shelfBooks.Clear();
+        _shelfBooks.AddRange(updatedBooks);
+        ShelfPageControl.SetBooks(_shelfBooks);
+
+        if (string.Equals(_currentBookPath, e.Book.FilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            _currentBookTitle = newTitle;
+            if (ReaderPageControl.Visibility == Visibility.Visible)
+            {
+                TitleBarControl.SetBookInfo(newTitle);
+            }
+        }
+    }
+
+    /// <summary>
     /// 打开指定 TXT 文件，并将成功打开的书籍新增或更新到持久化书架。
     /// </summary>
     /// <param name="filePath">要打开的 TXT 文件绝对路径。</param>
@@ -509,6 +568,7 @@ public partial class MainWindow : Window
         string normalizedPath = Path.GetFullPath(filePath);
         ShelfBook? savedBook = _shelfBooks.FirstOrDefault(book =>
             string.Equals(book.FilePath, normalizedPath, StringComparison.OrdinalIgnoreCase));
+        string displayTitle = savedBook?.Title ?? Path.GetFileNameWithoutExtension(normalizedPath);
         _currentBookPath = normalizedPath;
 
         try
@@ -516,7 +576,8 @@ public partial class MainWindow : Window
             await ReaderPageControl.LoadBookAsync(
                 normalizedPath,
                 savedBook?.ChapterIndex ?? 0,
-                savedBook?.PageIndex ?? 0);
+                savedBook?.PageIndex ?? 0,
+                displayTitle);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -529,7 +590,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        AddOrUpdateShelfBook(normalizedPath);
+        AddOrUpdateShelfBook(normalizedPath, displayTitle);
         ShelfPageControl.SetBooks(_shelfBooks);
         ShowReaderPage();
 
@@ -548,13 +609,17 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 将书籍加入书架；相同文件路径已存在时仅更新标题和最近打开时间。
+    /// 将书籍加入书架；相同文件路径已存在时更新显示名称和最近打开时间。
     /// </summary>
     /// <param name="filePath">已成功打开的 TXT 文件绝对路径。</param>
+    /// <param name="displayTitle">书籍在书架和标题栏中的显示名称。</param>
     /// <returns>无。</returns>
-    private void AddOrUpdateShelfBook(string filePath)
+    private void AddOrUpdateShelfBook(string filePath, string displayTitle)
     {
         string normalizedPath = Path.GetFullPath(filePath);
+        string title = string.IsNullOrWhiteSpace(displayTitle)
+            ? Path.GetFileNameWithoutExtension(normalizedPath)
+            : displayTitle.Trim();
         DateTimeOffset now = DateTimeOffset.Now;
         int existingIndex = _shelfBooks.FindIndex(book =>
             string.Equals(book.FilePath, normalizedPath, StringComparison.OrdinalIgnoreCase));
@@ -562,12 +627,12 @@ public partial class MainWindow : Window
         ShelfBook book = existingIndex >= 0
             ? _shelfBooks[existingIndex] with
             {
-                Title = Path.GetFileNameWithoutExtension(normalizedPath),
+                Title = title,
                 LastOpenedAt = now
             }
             : new ShelfBook(
                 normalizedPath,
-                Path.GetFileNameWithoutExtension(normalizedPath),
+                title,
                 now,
                 now);
 
@@ -738,10 +803,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 应用设置页保存的阅读页配置并异步持久化。
+    /// 应用设置页保存的应用配置并异步持久化。
     /// </summary>
     /// <param name="sender">提交设置的设置页面。</param>
-    /// <param name="e">包含新的阅读页设置的事件参数。</param>
+    /// <param name="e">包含新的应用设置的事件参数。</param>
     /// <returns>无。</returns>
     private async void SettingsPageControl_SettingsSaved(object? sender, ShortcutSettingsChangedEventArgs e)
     {
@@ -823,13 +888,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 处理阅读页的翻页和滚动快捷键。
+    /// 处理应用全局快捷键及阅读页的翻页和滚动快捷键。
     /// </summary>
     /// <param name="sender">接收键盘事件的主窗口。</param>
     /// <param name="e">包含按键和修饰键状态的事件参数。</param>
     /// <returns>无。</returns>
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (ReaderPageControl.HandleGlobalKeyboardInput(e.Key, Keyboard.Modifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (ReaderPageControl.Visibility != Visibility.Visible)
         {
             return;

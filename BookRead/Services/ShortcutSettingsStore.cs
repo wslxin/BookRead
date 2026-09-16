@@ -5,7 +5,7 @@ using BookRead.Models;
 namespace BookRead.Services;
 
 /// <summary>
-/// 负责将阅读页设置保存到本地应用数据目录并在启动时恢复。
+/// 负责将应用设置保存到本地应用数据目录并在启动时恢复。
 /// </summary>
 internal sealed class ShortcutSettingsStore
 {
@@ -26,9 +26,9 @@ internal sealed class ShortcutSettingsStore
     }
 
     /// <summary>
-    /// 从本地存储读取阅读页设置。
+    /// 从本地存储读取应用设置。
     /// </summary>
-    /// <returns>已保存的阅读页设置；存储文件不存在时返回默认设置。</returns>
+    /// <returns>已保存的应用设置；存储文件不存在时返回默认设置。</returns>
     /// <exception cref="IOException">读取设置文件失败时抛出。</exception>
     /// <exception cref="UnauthorizedAccessException">没有权限读取设置文件时抛出。</exception>
     /// <exception cref="JsonException">设置文件内容不是有效 JSON 时抛出。</exception>
@@ -45,9 +45,9 @@ internal sealed class ShortcutSettingsStore
     }
 
     /// <summary>
-    /// 将阅读页设置异步写入本地存储。
+    /// 将应用设置异步写入本地存储。
     /// </summary>
-    /// <param name="settings">要保存的阅读页设置。</param>
+    /// <param name="settings">要保存的应用设置。</param>
     /// <returns>表示异步保存过程的任务。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="settings"/> 为 null 时抛出。</exception>
     /// <exception cref="IOException">创建目录或写入设置文件失败时抛出。</exception>

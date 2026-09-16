@@ -18,6 +18,9 @@ public partial class ShelfPage : UserControl
     /// <summary>用户请求从书架移除已有书籍时触发。</summary>
     internal event EventHandler<BookOpenRequestedEventArgs>? BookRemovalRequested;
 
+    /// <summary>用户请求重命名书架中已有书籍时触发。</summary>
+    internal event EventHandler<BookOpenRequestedEventArgs>? BookRenameRequested;
+
     /// <summary>用户请求打开书籍所在文件夹时触发。</summary>
     internal event EventHandler<BookOpenRequestedEventArgs>? BookLocationRequested;
 
@@ -83,6 +86,22 @@ public partial class ShelfPage : UserControl
         }
 
         BookRemovalRequested?.Invoke(this, new BookOpenRequestedEventArgs(book));
+    }
+
+    /// <summary>
+    /// 将用户点击的书架重命名操作转交给主窗口处理。
+    /// </summary>
+    /// <param name="sender">触发操作的重命名按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void RenameShelfBook_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ShelfBook book })
+        {
+            return;
+        }
+
+        BookRenameRequested?.Invoke(this, new BookOpenRequestedEventArgs(book));
     }
 
     /// <summary>

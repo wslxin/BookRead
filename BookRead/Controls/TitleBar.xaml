@@ -36,8 +36,16 @@
                 <Button Width="30" Height="30" Padding="0" ToolTip="设置" Click="Settings_Click">
                     <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="13" />
                 </Button>
-                <Button Grid.Column="1" Width="30" Height="30" Padding="0" ToolTip="关闭窗口" Click="CloseWindow_Click">
-                    <TextBlock Text="&#xE8BB;" FontFamily="Segoe Fluent Icons" FontSize="13" />
+                <Button
+                    Grid.Column="1"
+                    Style="{StaticResource WindowCloseButton}"
+                    ToolTip="关闭窗口"
+                    Click="CloseWindow_Click">
+                    <TextBlock
+                        Text="&#xE8BB;"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="13"
+                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
                 </Button>
             </Grid>
         </Grid>

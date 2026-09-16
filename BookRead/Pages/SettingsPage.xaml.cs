@@ -6,7 +6,7 @@ using BookRead.Models;
 namespace BookRead.Pages;
 
 /// <summary>
-/// 设置页面，负责编辑阅读页快捷键和界面显示配置并提交配置。
+/// 设置页面，负责编辑应用的快捷键、界面显示和窗口行为配置并提交配置。
 /// </summary>
 public partial class SettingsPage : UserControl
 {
@@ -29,9 +29,9 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
-    /// 载入阅读页设置，覆盖当前页面中的待编辑副本。
+    /// 载入应用设置，覆盖当前页面中的待编辑副本。
     /// </summary>
-    /// <param name="settings">要载入的阅读页设置。</param>
+    /// <param name="settings">要载入的应用设置。</param>
     /// <returns>无。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="settings"/> 为 null 时抛出。</exception>
     internal void LoadSettings(ShortcutSettings settings)
@@ -40,6 +40,7 @@ public partial class SettingsPage : UserControl
         _editingSettings = settings.Clone();
         SelectSettingsTab(showShortcuts: true);
         ShowReaderToolbarCheckBox.IsChecked = _editingSettings.ShowReaderToolbar;
+        MinimizeToTrayOnCloseCheckBox.IsChecked = _editingSettings.MinimizeToTrayOnClose;
         UpdateShortcutTextBoxes();
     }
 
@@ -149,7 +150,7 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
-    /// 校验并提交当前阅读页设置修改。
+    /// 校验并提交当前应用设置修改。
     /// </summary>
     /// <param name="sender">触发保存操作的按钮。</param>
     /// <param name="e">路由事件参数。</param>
@@ -157,6 +158,7 @@ public partial class SettingsPage : UserControl
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _editingSettings.ShowReaderToolbar = ShowReaderToolbarCheckBox.IsChecked == true;
+        _editingSettings.MinimizeToTrayOnClose = MinimizeToTrayOnCloseCheckBox.IsChecked == true;
         ShortcutAction[] actions = Enum.GetValues<ShortcutAction>();
         var usedBindings = new Dictionary<ShortcutBinding, ShortcutAction>();
         foreach (ShortcutAction action in actions)

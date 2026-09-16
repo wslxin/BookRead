@@ -3,12 +3,12 @@ using System.Windows.Input;
 namespace BookRead.Models;
 
 /// <summary>
-/// 保存阅读页各项操作的快捷键及界面配置。
+/// 保存应用的快捷键、界面及窗口行为配置。
 /// </summary>
 internal sealed class ShortcutSettings
 {
     /// <summary>
-    /// 初始化阅读页设置。
+    /// 初始化应用设置。
     /// </summary>
     public ShortcutSettings()
     {
@@ -16,6 +16,9 @@ internal sealed class ShortcutSettings
 
     /// <summary>是否显示阅读页底部工具栏。</summary>
     public bool ShowReaderToolbar { get; set; } = true;
+
+    /// <summary>点击关闭按钮时是否最小化到系统托盘。</summary>
+    public bool MinimizeToTrayOnClose { get; set; } = true;
 
     /// <summary>下一页快捷键。</summary>
     public ShortcutBinding NextPage { get; set; } = new(Key.Right, ModifierKeys.None);
@@ -74,6 +77,7 @@ internal sealed class ShortcutSettings
         return new ShortcutSettings
         {
             ShowReaderToolbar = ShowReaderToolbar,
+            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             NextPage = NextPage,
             PreviousPage = PreviousPage,
             NextChapter = NextChapter,

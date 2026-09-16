@@ -1,7 +1,7 @@
 namespace BookRead.Models;
 
 /// <summary>
-/// 阅读页支持配置快捷键的操作类型。
+/// 应用支持配置快捷键的操作类型，包含全局操作和阅读页操作。
 /// </summary>
 internal enum ShortcutAction
 {

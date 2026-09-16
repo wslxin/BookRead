@@ -73,18 +73,26 @@ public partial class ReaderPage : UserControl
     /// <param name="filePath">要读取的 TXT 文件路径。</param>
     /// <param name="initialChapterIndex">打开时恢复的章节索引。</param>
     /// <param name="initialPageIndex">打开时恢复的章节内分页索引。</param>
+    /// <param name="displayTitle">书架中保存的书籍显示名称；为空时使用文件名。</param>
     /// <returns>表示异步读取过程的任务。</returns>
     /// <exception cref="IOException">文件读取失败时抛出。</exception>
     /// <exception cref="UnauthorizedAccessException">没有权限读取文件时抛出。</exception>
-    public async Task LoadBookAsync(string filePath, int initialChapterIndex = 0, int initialPageIndex = 0)
+    public async Task LoadBookAsync(
+        string filePath,
+        int initialChapterIndex = 0,
+        int initialPageIndex = 0,
+        string? displayTitle = null)
     {
         string content = await ReadBookContentAsync(filePath);
         _chapters.Clear();
         _chapters.AddRange(ChapterParser.Parse(content));
 
+        string title = string.IsNullOrWhiteSpace(displayTitle)
+            ? Path.GetFileNameWithoutExtension(filePath)
+            : displayTitle.Trim();
         BookInfoChanged?.Invoke(
             this,
-            new ReaderBookInfoChangedEventArgs(Path.GetFileNameWithoutExtension(filePath)));
+            new ReaderBookInfoChangedEventArgs(title));
         BuildChapterPanel();
         int chapterIndex = Math.Clamp(initialChapterIndex, 0, _chapters.Count - 1);
         ShowChapter(chapterIndex, initialPageIndex);
@@ -280,6 +288,11 @@ public partial class ReaderPage : UserControl
     /// <returns>按键已被阅读页处理时返回 true，否则返回 false。</returns>
     internal bool HandleKeyboardInput(Key key, ModifierKeys modifiers)
     {
+        if (HandleGlobalKeyboardInput(key, modifiers))
+        {
+            return true;
+        }
+
         if (_bookPages.Count == 0)
         {
             return false;
@@ -351,12 +364,6 @@ public partial class ReaderPage : UserControl
             return true;
         }
 
-        if (MatchesShortcut(ShortcutAction.ToggleTheme, key, modifiers))
-        {
-            ToggleReadingTheme_Click(this, new RoutedEventArgs());
-            return true;
-        }
-
         if (MatchesShortcut(ShortcutAction.ToggleChapter, key, modifiers))
         {
             ToggleChapterPanel_Click(this, new RoutedEventArgs());
@@ -364,6 +371,23 @@ public partial class ReaderPage : UserControl
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 处理不依赖阅读页可见状态和书籍内容的全局快捷键。
+    /// </summary>
+    /// <param name="key">触发操作的按键。</param>
+    /// <param name="modifiers">当前按下的修饰键组合。</param>
+    /// <returns>按键已被全局快捷键处理时返回 true，否则返回 false。</returns>
+    internal bool HandleGlobalKeyboardInput(Key key, ModifierKeys modifiers)
+    {
+        if (!MatchesShortcut(ShortcutAction.ToggleTheme, key, modifiers))
+        {
+            return false;
+        }
+
+        ToggleReadingTheme_Click(this, new RoutedEventArgs());
+        return true;
     }
 
     /// <summary>
