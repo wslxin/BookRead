@@ -46,45 +46,6 @@ internal static partial class BookContentLoader
         @"<title\b[^>]*>(?<title>.*?)</title>",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-    private static readonly Regex MarkdownFenceRegex = new(
-        @"(?m)^[ \t]*```[^\r\n]*\r?\n?",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownImageRegex = new(
-        @"!\[(?<text>[^\]]*)\]\([^)]+\)",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownLinkRegex = new(
-        @"\[(?<text>[^\]]+)\]\([^)]+\)",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownInlineCodeRegex = new(
-        @"`(?<code>[^`]*)`",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownBoldRegex = new(
-        @"(?<marker>\*\*|__)(?<text>.+?)\k<marker>",
-        RegexOptions.Compiled | RegexOptions.Singleline);
-
-    private static readonly Regex MarkdownItalicRegex = new(
-        @"(?<!\w)(?<marker>[*_])(?<text>[^*_\r\n]+?)\k<marker>(?!\w)",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownStrikeRegex = new(
-        @"~~(?<text>.+?)~~",
-        RegexOptions.Compiled | RegexOptions.Singleline);
-
-    private static readonly Regex MarkdownHeadingRegex = new(
-        @"(?m)^[ \t]{0,3}#{1,6}[ \t]*",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownQuoteRegex = new(
-        @"(?m)^[ \t]*>[ \t]?",
-        RegexOptions.Compiled);
-
-    private static readonly Regex MarkdownListRegex = new(
-        @"(?m)^[ \t]*(?:[-+*]|\d+\.)[ \t]+",
-        RegexOptions.Compiled);
 
     private static readonly Regex HtmlCommentRegex = new(
         @"<!--.*?-->",
@@ -142,15 +103,20 @@ internal static partial class BookContentLoader
     }
 
     /// <summary>
-    /// 读取 Markdown 文件，去除常见标记后拆分正文。
+    /// 读取 Markdown 文件，保留格式标记并按 Markdown 标题拆分正文。
     /// </summary>
     /// <param name="filePath">Markdown 文件路径。</param>
     /// <returns>解析后的章节列表。</returns>
+    /// <exception cref="BookContentLoadException">正文为空时抛出。</exception>
     private static async Task<IReadOnlyList<BookChapter>> LoadMarkdownAsync(string filePath)
     {
         string markdown = await ReadTextFileAsync(filePath);
-        string content = ConvertMarkdownToPlainText(markdown);
-        return ParsePlainText(content);
+        if (string.IsNullOrWhiteSpace(markdown))
+        {
+            throw new BookContentLoadException("文件中没有可读取的正文。");
+        }
+
+        return ChapterParser.ParseMarkdown(markdown);
     }
 
     /// <summary>
@@ -181,26 +147,6 @@ internal static partial class BookContentLoader
         return ChapterParser.Parse(content);
     }
 
-    /// <summary>
-    /// 将 Markdown 中常见语法转换为适合纯文本阅读的内容。
-    /// </summary>
-    /// <param name="markdown">原始 Markdown 内容。</param>
-    /// <returns>去除常见标记后的正文。</returns>
-    private static string ConvertMarkdownToPlainText(string markdown)
-    {
-        string content = HtmlCommentRegex.Replace(markdown, string.Empty);
-        content = MarkdownFenceRegex.Replace(content, string.Empty);
-        content = MarkdownImageRegex.Replace(content, "${text}");
-        content = MarkdownLinkRegex.Replace(content, "${text}");
-        content = MarkdownInlineCodeRegex.Replace(content, "${code}");
-        content = MarkdownBoldRegex.Replace(content, "${text}");
-        content = MarkdownItalicRegex.Replace(content, "${text}");
-        content = MarkdownStrikeRegex.Replace(content, "${text}");
-        content = MarkdownHeadingRegex.Replace(content, string.Empty);
-        content = MarkdownQuoteRegex.Replace(content, string.Empty);
-        content = MarkdownListRegex.Replace(content, string.Empty);
-        return NormalizeExtractedText(WebUtility.HtmlDecode(content));
-    }
 
     /// <summary>
     /// 从 HTML 中提取可见文本，移除脚本、样式和标签。

@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using BookRead.Models;
 using BookRead.Services;
@@ -21,21 +22,30 @@ public partial class ReaderPage : UserControl
     /// <summary>当前书籍信息加载完成或发生变化时触发。</summary>
     internal event EventHandler<ReaderBookInfoChangedEventArgs>? BookInfoChanged;
 
+    /// <summary>当前章节发生变化时触发。</summary>
+    internal event EventHandler<ReaderChapterChangedEventArgs>? ChapterChanged;
+
     /// <summary>阅读页透明背景状态发生变化时触发。</summary>
     internal event EventHandler? ReaderTransparencyChanged;
 
     private double _fontSize = 17;
     private double _lineSpacing = 1.6;
     private bool _isReaderBackgroundTransparent;
+    private bool _isMarkdownBook;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.CreateDefault();
     private readonly DispatcherTimer _scrollbarHideTimer;
     private readonly DispatcherTimer _styleNotificationHideTimer;
     private readonly List<BookChapter> _chapters = [];
     private readonly List<string> _bookPages = [];
+    private readonly List<TextBlock> _markdownChapterHeadings = [];
     private int _currentChapter;
     private int _currentBookPage;
     private bool _changingBookPage;
+    private bool _isPageTurnBounceAnimating;
+    private bool _pageTurnBounceRequiresBottom;
+    private int _pageTurnBounceCount;
     private const int BookPageLength = 12000;
+    private const int AutoPageTurnBounceCount = 2;
     private const double MinimumLineSpacing = 1.2;
     private const double MaximumLineSpacing = 2.4;
     private const double LineSpacingStep = 0.1;
@@ -83,6 +93,11 @@ public partial class ReaderPage : UserControl
         int initialPageIndex = 0,
         string? displayTitle = null)
     {
+        string extension = Path.GetExtension(filePath);
+        _isMarkdownBook =
+            extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase);
+
         IReadOnlyList<BookChapter> chapters = await BookContentLoader.LoadAsync(filePath);
         _chapters.Clear();
         _chapters.AddRange(chapters);
@@ -95,6 +110,12 @@ public partial class ReaderPage : UserControl
             new ReaderBookInfoChangedEventArgs(title));
         BuildChapterPanel();
         int chapterIndex = Math.Clamp(initialChapterIndex, 0, _chapters.Count - 1);
+        if (_isMarkdownBook)
+        {
+            ShowMarkdownDocument(chapterIndex);
+            return;
+        }
+
         ShowChapter(chapterIndex, initialPageIndex);
     }
 
@@ -150,8 +171,10 @@ public partial class ReaderPage : UserControl
 
         _currentBookPage = Math.Clamp(pageIndex, 0, _bookPages.Count - 1);
 
+        ChapterTitle.Visibility = Visibility.Visible;
         ChapterTitle.Text = chapter.Title;
         ChapterProgressText.Text = $"{chapterIndex + 1} / {_chapters.Count}";
+        NotifyChapterChanged(chapter);
         ShowBookPage();
     }
 
@@ -161,16 +184,172 @@ public partial class ReaderPage : UserControl
     {
         if (_bookPages.Count == 0)
         {
-            ReaderText.Text = string.Empty;
+            RenderCurrentBookPage();
             ReadingProgressBar.Value = 0;
             return;
         }
 
         _changingBookPage = true;
-        ReaderText.Text = _bookPages[_currentBookPage];
+        CancelPageTurnBounceSequence();
+        RenderCurrentBookPage();
         ReaderScroll.ScrollToTop();
         _changingBookPage = false;
         UpdateReadingProgress();
+        ProgressChanged?.Invoke(
+            this,
+            new ReaderProgressChangedEventArgs(_currentChapter, _currentBookPage));
+    }
+
+    /// <summary>
+    /// 按当前书籍类型渲染当前虚拟页面；Markdown 使用富文本，其他格式使用纯文本。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void RenderCurrentBookPage()
+    {
+        if (_isMarkdownBook)
+        {
+            RenderMarkdownDocument();
+            return;
+        }
+
+        string content = _bookPages.Count == 0
+            ? string.Empty
+            : _bookPages[_currentBookPage];
+        MarkdownContentPanel.Visibility = Visibility.Collapsed;
+        MarkdownContentPanel.Children.Clear();
+        ReaderText.Visibility = Visibility.Visible;
+        ChapterTitle.Visibility = Visibility.Visible;
+        ReaderText.Text = content;
+    }
+
+    /// <summary>
+    /// 从章节起点开始显示整本 Markdown，并滚动到指定章节标题。
+    /// </summary>
+    /// <param name="chapterIndex">需要定位到的章节索引。</param>
+    /// <returns>无。</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="chapterIndex"/> 超出章节范围时抛出。</exception>
+    private void ShowMarkdownDocument(int chapterIndex)
+    {
+        if (chapterIndex < 0 || chapterIndex >= _chapters.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chapterIndex));
+        }
+
+        _currentChapter = chapterIndex;
+        _currentBookPage = 0;
+        _bookPages.Clear();
+        _bookPages.Add(string.Empty);
+        RenderCurrentBookPage();
+        ScrollToMarkdownChapter(chapterIndex);
+    }
+
+    /// <summary>
+    /// 将整本 Markdown 渲染成连续页面，并记录各章节标题锚点。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void RenderMarkdownDocument()
+    {
+        ReaderText.Text = string.Empty;
+        ReaderText.Visibility = Visibility.Collapsed;
+        ChapterTitle.Visibility = Visibility.Collapsed;
+        MarkdownContentPanel.Visibility = Visibility.Visible;
+        _markdownChapterHeadings.Clear();
+        _markdownChapterHeadings.AddRange(
+            MarkdownTextRenderer.RenderDocument(
+                MarkdownContentPanel,
+                _chapters,
+                _fontSize,
+                _lineSpacing));
+    }
+
+    /// <summary>
+    /// 滚动到指定 Markdown 章节标题，并同步章节状态与阅读进度。
+    /// </summary>
+    /// <param name="chapterIndex">目标章节索引。</param>
+    /// <returns>无。</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="chapterIndex"/> 超出章节范围时抛出。</exception>
+    private void ScrollToMarkdownChapter(int chapterIndex)
+    {
+        if (chapterIndex < 0 || chapterIndex >= _chapters.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chapterIndex));
+        }
+
+        _currentChapter = chapterIndex;
+        _currentBookPage = 0;
+        ChapterProgressText.Text = $"{chapterIndex + 1} / {_chapters.Count}";
+        NotifyChapterChanged(_chapters[chapterIndex]);
+        ProgressChanged?.Invoke(
+            this,
+            new ReaderProgressChangedEventArgs(_currentChapter, _currentBookPage));
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                if (_currentChapter != chapterIndex ||
+                    chapterIndex >= _markdownChapterHeadings.Count)
+                {
+                    return;
+                }
+
+                MarkdownContentPanel.UpdateLayout();
+                TextBlock heading = _markdownChapterHeadings[chapterIndex];
+                Point headingPosition = heading
+                    .TransformToAncestor(MarkdownContentPanel)
+                    .Transform(new Point(0, 0));
+                ReaderScroll.ScrollToVerticalOffset(Math.Max(0, headingPosition.Y - 8));
+                UpdateReadingProgress();
+            }));
+    }
+
+    /// <summary>
+    /// 通知主窗口当前章节名称发生变化。
+    /// </summary>
+    /// <param name="chapter">当前章节。</param>
+    /// <returns>无。</returns>
+    private void NotifyChapterChanged(BookChapter chapter)
+    {
+        string title = string.IsNullOrWhiteSpace(chapter.Title)
+            ? "正文"
+            : chapter.Title;
+        ChapterChanged?.Invoke(this, new ReaderChapterChangedEventArgs(title));
+    }
+
+    /// <summary>
+    /// 根据 Markdown 当前滚动位置更新可见章节，并同步章节名称。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void UpdateCurrentMarkdownChapterFromScroll()
+    {
+        if (!_isMarkdownBook || _markdownChapterHeadings.Count == 0)
+        {
+            return;
+        }
+
+        int chapterIndex = 0;
+        for (var index = 0; index < _markdownChapterHeadings.Count; index++)
+        {
+            Point headingPosition = _markdownChapterHeadings[index]
+                .TransformToAncestor(MarkdownContentPanel)
+                .Transform(new Point(0, 0));
+            if (headingPosition.Y > ReaderScroll.VerticalOffset + 1)
+            {
+                break;
+            }
+
+            chapterIndex = index;
+        }
+
+        if (chapterIndex == _currentChapter)
+        {
+            return;
+        }
+
+        _currentChapter = chapterIndex;
+        _currentBookPage = 0;
+        ChapterProgressText.Text = $"{chapterIndex + 1} / {_chapters.Count}";
+        NotifyChapterChanged(_chapters[chapterIndex]);
         ProgressChanged?.Invoke(
             this,
             new ReaderProgressChangedEventArgs(_currentChapter, _currentBookPage));
@@ -182,6 +361,15 @@ public partial class ReaderPage : UserControl
     /// <returns>无。</returns>
     private void UpdateReadingProgress()
     {
+        if (_isMarkdownBook)
+        {
+            double maximumOffset = Math.Max(0, ReaderScroll.ExtentHeight - ReaderScroll.ViewportHeight);
+            ReadingProgressBar.Value = maximumOffset <= 0
+                ? 100
+                : Math.Clamp(ReaderScroll.VerticalOffset / maximumOffset * 100, 0, 100);
+            return;
+        }
+
         if (_chapters.Count == 0 || _bookPages.Count == 0)
         {
             ReadingProgressBar.Value = 0;
@@ -254,7 +442,17 @@ public partial class ReaderPage : UserControl
 
         if (MatchesShortcut(ShortcutAction.ScrollDown, key, modifiers))
         {
-            ScrollReader(1);
+            if (!_isMarkdownBook &&
+                IsReaderAtBottom() &&
+                CanMoveToNextPage())
+            {
+                StartPageTurnBounce(requireReaderAtBottom: true);
+            }
+            else
+            {
+                ScrollReader(1);
+            }
+
             return true;
         }
 
@@ -378,6 +576,12 @@ public partial class ReaderPage : UserControl
     /// <returns>无。</returns>
     private void MoveToNextBookPage()
     {
+        if (_isMarkdownBook)
+        {
+            ScrollReader(1);
+            return;
+        }
+
         if (_bookPages.Count == 0)
         {
             return;
@@ -403,6 +607,12 @@ public partial class ReaderPage : UserControl
     /// <returns>无。</returns>
     private void MoveToPreviousBookPage()
     {
+        if (_isMarkdownBook)
+        {
+            ScrollReader(-1);
+            return;
+        }
+
         if (_bookPages.Count == 0)
         {
             return;
@@ -451,7 +661,15 @@ public partial class ReaderPage : UserControl
             return;
         }
 
-        ShowChapter(chapterIndex);
+        if (_isMarkdownBook)
+        {
+            ScrollToMarkdownChapter(chapterIndex);
+        }
+        else
+        {
+            ShowChapter(chapterIndex);
+        }
+
         ChapterPanel.Visibility = Visibility.Collapsed;
     }
 
@@ -466,7 +684,14 @@ public partial class ReaderPage : UserControl
             return;
         }
 
-        ShowChapter(_currentChapter - 1);
+        if (_isMarkdownBook)
+        {
+            ScrollToMarkdownChapter(_currentChapter - 1);
+        }
+        else
+        {
+            ShowChapter(_currentChapter - 1);
+        }
     }
 
     /// <summary>跳转到下一章，并更新章节标题。</summary>
@@ -480,7 +705,14 @@ public partial class ReaderPage : UserControl
             return;
         }
 
-        ShowChapter(_currentChapter + 1);
+        if (_isMarkdownBook)
+        {
+            ScrollToMarkdownChapter(_currentChapter + 1);
+        }
+        else
+        {
+            ShowChapter(_currentChapter + 1);
+        }
     }
 
     /// <summary>增大正文文字字号。</summary>
@@ -559,6 +791,15 @@ public partial class ReaderPage : UserControl
         ReaderText.FontSize = _fontSize;
         ReaderText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         ReaderText.LineHeight = _fontSize * _lineSpacing;
+
+        if (_isMarkdownBook && _bookPages.Count > 0)
+        {
+            double previousOffset = ReaderScroll.VerticalOffset;
+            RenderCurrentBookPage();
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                new Action(() => ReaderScroll.ScrollToVerticalOffset(previousOffset)));
+        }
     }
 
     /// <summary>
@@ -660,7 +901,160 @@ public partial class ReaderPage : UserControl
         ChapterTitle.Text = "暂无正文";
         ChapterCountText.Text = "暂无章节";
         ChapterProgressText.Text = "— / —";
+        ChapterTitle.Visibility = Visibility.Visible;
+        ReaderText.Visibility = Visibility.Visible;
         ReaderText.Text = string.Empty;
+        MarkdownContentPanel.Visibility = Visibility.Collapsed;
+        MarkdownContentPanel.Children.Clear();
+        _markdownChapterHeadings.Clear();
+        CancelPageTurnBounceSequence();
+    }
+
+    /// <summary>
+    /// 在当前分页已滚动到底部时继续向下滚动鼠标滚轮，自动切换到下一页或下一章。
+    /// </summary>
+    /// <param name="sender">触发滚轮事件的阅读滚动区域。</param>
+    /// <param name="e">鼠标滚轮事件参数。</param>
+    /// <returns>无。</returns>
+    private void ReaderScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_isMarkdownBook || e.Delta >= 0 || _bookPages.Count == 0)
+        {
+            return;
+        }
+
+        if (!IsReaderAtBottom() || !CanMoveToNextPage())
+        {
+            return;
+        }
+
+        if (_isPageTurnBounceAnimating)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        StartPageTurnBounce(requireReaderAtBottom: true);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 判断当前阅读区域是否已经滚动到底部。
+    /// </summary>
+    /// <returns>位于底部时返回 true，否则返回 false。</returns>
+    private bool IsReaderAtBottom()
+    {
+        double maximumOffset = Math.Max(0, ReaderScroll.ExtentHeight - ReaderScroll.ViewportHeight);
+        return ReaderScroll.VerticalOffset >= maximumOffset - 1;
+    }
+
+    /// <summary>
+    /// 判断当前分页之后是否还存在下一页或下一章。
+    /// </summary>
+    /// <returns>存在后续页面时返回 true，否则返回 false。</returns>
+    private bool CanMoveToNextPage()
+    {
+        return _bookPages.Count > 0 &&
+               (_currentBookPage < _bookPages.Count - 1 ||
+                _currentChapter < _chapters.Count - 1);
+    }
+
+    /// <summary>
+    /// 根据下一次翻页操作播放一次回弹动画；第二次回弹完成后切换页面。
+    /// </summary>
+    /// <param name="requireReaderAtBottom">是否要求当前阅读区域必须先到达底部。</param>
+    /// <returns>无。</returns>
+    private void StartPageTurnBounce(bool requireReaderAtBottom)
+    {
+        if (_isPageTurnBounceAnimating ||
+            _pageTurnBounceCount >= AutoPageTurnBounceCount ||
+            (requireReaderAtBottom && !IsReaderAtBottom()) ||
+            !CanMoveToNextPage())
+        {
+            return;
+        }
+
+        if (_pageTurnBounceCount == 0)
+        {
+            _pageTurnBounceRequiresBottom = requireReaderAtBottom;
+        }
+
+        _isPageTurnBounceAnimating = true;
+        _pageTurnBounceCount++;
+        PlayNextPageTurnBounce();
+    }
+
+    /// <summary>
+    /// 取消尚未完成的回弹动画并恢复正文位置。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void CancelPageTurnBounceSequence()
+    {
+        _isPageTurnBounceAnimating = false;
+        _pageTurnBounceRequiresBottom = false;
+        _pageTurnBounceCount = 0;
+        ReaderContentTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ReaderContentTransform.Y = 0;
+    }
+
+    /// <summary>
+    /// 播放下一次页面回弹动画。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void PlayNextPageTurnBounce()
+    {
+        ReaderContentTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ReaderContentTransform.Y = 0;
+
+        var bounceAnimation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(320),
+            FillBehavior = FillBehavior.Stop
+        };
+        bounceAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromPercent(0)));
+        bounceAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                -18,
+                KeyTime.FromPercent(0.35),
+                new CubicEase { EasingMode = EasingMode.EaseOut }));
+        bounceAnimation.KeyFrames.Add(
+            new EasingDoubleKeyFrame(
+                0,
+                KeyTime.FromPercent(1),
+                new CubicEase { EasingMode = EasingMode.EaseInOut }));
+
+        bounceAnimation.Completed += PageTurnBounceAnimation_Completed;
+        ReaderContentTransform.BeginAnimation(
+            TranslateTransform.YProperty,
+            bounceAnimation);
+    }
+
+    /// <summary>
+    /// 处理单次回弹动画结束事件，并在完成两次回弹后切换页面。
+    /// </summary>
+    /// <param name="sender">触发事件动画。</param>
+    /// <param name="e">事件参数。</param>
+    /// <returns>无。</returns>
+    private void PageTurnBounceAnimation_Completed(object? sender, EventArgs e)
+    {
+        _isPageTurnBounceAnimating = false;
+        if (_pageTurnBounceCount < AutoPageTurnBounceCount)
+        {
+            return;
+        }
+
+        bool requireReaderAtBottom = _pageTurnBounceRequiresBottom;
+        _pageTurnBounceRequiresBottom = false;
+        _pageTurnBounceCount = 0;
+        if ((requireReaderAtBottom && !IsReaderAtBottom()) || !CanMoveToNextPage())
+        {
+            return;
+        }
+
+        MoveToNextBookPage();
     }
 
     /// <summary>在滚动发生时显示对应滚动条并重新计时自动隐藏。</summary>
@@ -674,20 +1068,34 @@ public partial class ReaderPage : UserControl
             return;
         }
 
-        if (scrollViewer == ReaderScroll && !_changingBookPage && _bookPages.Count > 1)
+        if (scrollViewer == ReaderScroll && _isMarkdownBook && e.VerticalChange != 0)
         {
-            if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 2)
+            UpdateReadingProgress();
+            UpdateCurrentMarkdownChapterFromScroll();
+        }
+
+        if (scrollViewer == ReaderScroll && !_changingBookPage && _bookPages.Count > 0)
+        {
+            bool isAtBottom = e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 2;
+            if (isAtBottom &&
+                e.VerticalChange > 0 &&
+                _pageTurnBounceCount == 0 &&
+                !_isPageTurnBounceAnimating &&
+                CanMoveToNextPage())
             {
-                if (_currentBookPage < _bookPages.Count - 1)
+                StartPageTurnBounce(requireReaderAtBottom: true);
+            }
+            else if (!isAtBottom)
+            {
+                if (_pageTurnBounceRequiresBottom)
                 {
-                    _currentBookPage++;
+                    CancelPageTurnBounceSequence();
+                }
+                if (e.VerticalOffset <= 0 && _currentBookPage > 0 && e.VerticalChange < 0)
+                {
+                    _currentBookPage--;
                     ShowBookPage();
                 }
-            }
-            else if (e.VerticalOffset <= 0 && _currentBookPage > 0 && e.VerticalChange < 0)
-            {
-                _currentBookPage--;
-                ShowBookPage();
             }
         }
 

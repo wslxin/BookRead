@@ -3,15 +3,72 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="{DynamicResource AppBackground}">
+    <UserControl.Resources>
+        <Style
+            x:Key="ReaderScrollBar"
+            TargetType="ScrollBar"
+            BasedOn="{StaticResource {x:Type ScrollBar}}">
+            <Setter Property="Width" Value="12" />
+            <Setter Property="MinWidth" Value="12" />
+            <Setter Property="MaxWidth" Value="12" />
+            <Setter Property="Cursor" Value="SizeNS" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track
+                                x:Name="PART_Track"
+                                Orientation="Vertical"
+                                IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton
+                                        Command="ScrollBar.LineUpCommand"
+                                        Style="{StaticResource ScrollBarButton}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinHeight="24">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Grid Background="Transparent">
+                                                    <Border
+                                                        Width="4"
+                                                        Margin="0,1"
+                                                        HorizontalAlignment="Center"
+                                                        Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type ScrollBar}}}"
+                                                        CornerRadius="2" />
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton
+                                        Command="ScrollBar.LineDownCommand"
+                                        Style="{StaticResource ScrollBarButton}" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition x:Name="ReaderToolbarRow" Height="64" />
         </Grid.RowDefinitions>
-        <ScrollViewer x:Name="ReaderScroll" Padding="50,26,50,55" ScrollChanged="ScrollViewer_ScrollChanged">
+        <ScrollViewer x:Name="ReaderScroll" Padding="50,26,50,55" ScrollChanged="ScrollViewer_ScrollChanged" PreviewMouseWheel="ReaderScroll_PreviewMouseWheel">
+            <ScrollViewer.Resources>
+                <Style TargetType="ScrollBar" BasedOn="{StaticResource ReaderScrollBar}" />
+            </ScrollViewer.Resources>
             <StackPanel x:Name="ReaderContentPanel" MaxWidth="720" HorizontalAlignment="Center">
+                <StackPanel.RenderTransform>
+                    <TranslateTransform x:Name="ReaderContentTransform" />
+                </StackPanel.RenderTransform>
                 <TextBlock x:Name="ChapterTitle" Text="暂无正文" Foreground="{DynamicResource TextPrimary}" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,28" />
                 <TextBlock x:Name="ReaderText" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="17" FontFamily="Microsoft YaHei" Focusable="False" />
+                <StackPanel x:Name="MarkdownContentPanel" Visibility="Collapsed" />
             </StackPanel>
         </ScrollViewer>
         <Grid x:Name="ReaderToolbar" Grid.Row="1" Margin="48,0">

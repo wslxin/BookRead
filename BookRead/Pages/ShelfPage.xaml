@@ -35,14 +35,19 @@
                     FontSize="11"
                     Text="支持 TXT、Markdown、HTML、EPUB、DOCX 格式" />
             </StackPanel>
-            <ScrollViewer Padding="8,22">
-                <StackPanel>
-                    <TextBlock Text="我的书架" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="13,0,0,10" />
-                    <ListBox
-                        x:Name="BookList"
-                        Background="Transparent"
-                        BorderThickness="0"
-						ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="8,22">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="我的书架" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="13,0,0,10" />
+                <ListBox
+                    x:Name="BookList"
+                    Grid.Row="1"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto">
 						
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -135,9 +140,8 @@
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </ScrollViewer>
+                </ListBox>
+            </Grid>
         </DockPanel>
     </Border>
 </UserControl>

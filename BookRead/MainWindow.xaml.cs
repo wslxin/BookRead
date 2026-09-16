@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private ShortcutSettings _shortcutSettings = ShortcutSettings.CreateDefault();
     private string? _currentBookPath;
     private string? _currentBookTitle;
+    private string? _currentChapterTitle;
     private bool _settingsOpenedFromReader;
     private readonly Forms.NotifyIcon _notifyIcon;
     private TrayMenuWindow? _trayMenuWindow;
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
         ShelfPageControl.BookLocationRequested += ShelfPageControl_BookLocationRequested;
         ReaderPageControl.ProgressChanged += ReaderPageControl_ProgressChanged;
         ReaderPageControl.BookInfoChanged += ReaderPageControl_BookInfoChanged;
+        ReaderPageControl.ChapterChanged += ReaderPageControl_ChapterChanged;
         ReaderPageControl.ReaderTransparencyChanged += ReaderPageControl_ReaderTransparencyChanged;
         TitleBarControl.ShelfRequested += TitleBarControl_ShelfRequested;
         TitleBarControl.SettingsRequested += TitleBarControl_SettingsRequested;
@@ -422,7 +424,53 @@ public partial class MainWindow : Window
     private void ReaderPageControl_BookInfoChanged(object? sender, ReaderBookInfoChangedEventArgs e)
     {
         _currentBookTitle = e.Title;
-        TitleBarControl.SetBookInfo(e.Title);
+        _currentChapterTitle = null;
+        UpdateTitleBarReadingTitle();
+    }
+
+    /// <summary>
+    /// 将阅读页提供的章节名称同步到标题栏。
+    /// </summary>
+    /// <param name="sender">报告章节变化的阅读页面。</param>
+    /// <param name="e">包含章节名称的事件参数。</param>
+    /// <returns>无。</returns>
+    private void ReaderPageControl_ChapterChanged(object? sender, ReaderChapterChangedEventArgs e)
+    {
+        _currentChapterTitle = e.Title;
+        UpdateTitleBarReadingTitle();
+    }
+
+    /// <summary>
+    /// 根据当前书名和章节名更新标题栏显示文本。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void UpdateTitleBarReadingTitle()
+    {
+        string? readingTitle = GetTitleBarReadingTitle();
+        if (!string.IsNullOrWhiteSpace(readingTitle))
+        {
+            TitleBarControl.SetBookInfo(readingTitle);
+        }
+    }
+
+    /// <summary>
+    /// 组合标题栏使用的书名和章节名，避免两者相同时重复显示。
+    /// </summary>
+    /// <returns>组合后的标题文本；无可用信息时返回 <see langword="null"/>。</returns>
+    private string? GetTitleBarReadingTitle()
+    {
+        if (string.IsNullOrWhiteSpace(_currentBookTitle))
+        {
+            return _currentChapterTitle;
+        }
+
+        if (string.IsNullOrWhiteSpace(_currentChapterTitle) ||
+            string.Equals(_currentBookTitle, _currentChapterTitle, StringComparison.Ordinal))
+        {
+            return _currentBookTitle;
+        }
+
+        return $"{_currentBookTitle} · {_currentChapterTitle}";
     }
 
     /// <summary>
@@ -665,6 +713,7 @@ public partial class MainWindow : Window
         SetTitleBarVisible(true);
         TitleBarControl.SetBackButtonVisible(false);
         TitleBarControl.ClearBookInfo();
+        _currentChapterTitle = null;
         UpdateWindowFrameClip();
     }
 
@@ -685,10 +734,7 @@ public partial class MainWindow : Window
         SettingsPageControl.Visibility = Visibility.Collapsed;
         SetTitleBarVisible(!ReaderPageControl.IsReaderBackgroundTransparent);
         TitleBarControl.SetBackButtonVisible(true);
-        if (!string.IsNullOrWhiteSpace(_currentBookTitle))
-        {
-            TitleBarControl.SetBookInfo(_currentBookTitle);
-        }
+        UpdateTitleBarReadingTitle();
         UpdateWindowFrameClip();
     }
 

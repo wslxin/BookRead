@@ -34,9 +34,9 @@ public partial class TitleBar : System.Windows.Controls.UserControl
     }
 
     /// <summary>
-    /// 在标题栏显示当前阅读书名，并隐藏应用图标和应用名称。
+    /// 在标题栏显示当前阅读名称，并隐藏应用图标和应用名称。
     /// </summary>
-    /// <param name="title">书籍显示名称。</param>
+    /// <param name="title">当前书名或章节名称。</param>
     /// <returns>无。</returns>
     /// <exception cref="ArgumentNullException"><paramref name="title"/> 为 <see langword="null"/> 时抛出。</exception>
     public void SetBookInfo(string title)
