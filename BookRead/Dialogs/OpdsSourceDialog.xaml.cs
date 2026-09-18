@@ -2,7 +2,8 @@ using System.IO;
 using System.Net.Http;
 using System.Security;
 using System.Windows;
-using System.Windows.Threading;
+using System.Windows.Input;
+using BookRead.Controls;
 using BookRead.Models;
 using BookRead.Services;
 
@@ -14,8 +15,10 @@ namespace BookRead.Dialogs;
 internal partial class OpdsSourceDialog : Window
 {
     private readonly OpdsSource _editingSource;
-    private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private readonly bool _isCreating;
+
+    /// <summary>弹窗内状态提示的自动隐藏时长。</summary>
+    private static readonly TimeSpan StatusAutoHideDuration = TimeSpan.FromSeconds(3);
 
     /// <summary>获取用户确认后的书源。</summary>
     internal OpdsSource Source { get; private set; } = new();
@@ -35,11 +38,6 @@ internal partial class OpdsSourceDialog : Window
         UrlTextBox.Text = source.Url;
         UsernameTextBox.Text = source.Username;
         IgnoreCertificateCheckBox.IsChecked = source.IgnoreCertificateErrors;
-        _statusTimer.Tick += (_, _) =>
-        {
-            _statusTimer.Stop();
-            StatusNotification.Hide();
-        };
     }
 
     /// <summary>
@@ -141,14 +139,14 @@ internal partial class OpdsSourceDialog : Window
     {
         if (string.IsNullOrWhiteSpace(NameTextBox.Text))
         {
-            ShowStatus("请输入书源名称。", isError: true);
+            ShowStatus("请输入书源名称。", InlineNotificationType.Error);
             return;
         }
 
         if (!Uri.TryCreate(UrlTextBox.Text.Trim(), UriKind.Absolute, out Uri? url) ||
             url.Scheme is not ("http" or "https"))
         {
-            ShowStatus("请输入有效的 http:// 或 https:// 书源地址。", isError: true);
+            ShowStatus("请输入有效的 http:// 或 https:// 书源地址。", InlineNotificationType.Error);
             return;
         }
 
@@ -165,11 +163,16 @@ internal partial class OpdsSourceDialog : Window
     {
         if (!Uri.TryCreate(UrlTextBox.Text.Trim(), UriKind.Absolute, out Uri? url) ||
             url.Scheme is not ("http" or "https"))
+        {
+            ShowStatus("请输入有效的 http:// 或 https:// 书源地址。", InlineNotificationType.Error);
+            return;
+        }
+
         try
         {
             TestButton.IsEnabled = false;
             TestButton.Content = "测试中…";
-            ShowStatus("正在连接书源…", isError: false);
+            ShowStatus("正在连接书源…", InlineNotificationType.Info);
             OpdsSource temporarySource = new()
             {
                 Name = NameTextBox.Text,
@@ -212,7 +215,7 @@ internal partial class OpdsSourceDialog : Window
                 }
             });
 
-            ShowStatus(status, isError: status != "连接成功。");
+            ShowStatus(status, status == "连接成功。" ? InlineNotificationType.Success : InlineNotificationType.Error);
         }
         finally
         {
@@ -225,15 +228,36 @@ internal partial class OpdsSourceDialog : Window
     /// 在弹窗底部显示测试或校验状态。
     /// </summary>
     /// <param name="message">要显示的状态内容。</param>
-    /// <param name="isError">是否为错误状态。</param>
+    /// <param name="type">状态类型，用于选择图标和颜色。</param>
     /// <returns>无。</returns>
-    private void ShowStatus(string message, bool isError)
+    private void ShowStatus(string message, InlineNotificationType type)
     {
-        // 通用内联提示会自动隐藏，连接状态采用更长计时，避免用户漏看结果。
-        StatusNotification.Show(message);
-        _statusTimer.Stop();
-        _statusTimer.Start();
+        // 状态提示使用更长展示时间，避免用户还没看清结果就自动消失。
+        StatusNotification.Show(message, type, StatusAutoHideDuration);
     }
+
+    /// <summary>
+    /// 鼠标悬浮在状态提示上时暂停自动隐藏。
+    /// </summary>
+    /// <param name="sender">触发事件的提示控件。</param>
+    /// <param name="e">鼠标事件参数。</param>
+    /// <returns>无。</returns>
+    private void StatusNotification_MouseEnter(object sender, MouseEventArgs e)
+    {
+        StatusNotification.SuspendAutoHide();
+    }
+
+    /// <summary>
+    /// 鼠标离开状态提示后恢复自动隐藏计时。
+    /// </summary>
+    /// <param name="sender">触发事件的提示控件。</param>
+    /// <param name="e">鼠标事件参数。</param>
+    /// <returns>无。</returns>
+    private void StatusNotification_MouseLeave(object sender, MouseEventArgs e)
+    {
+        StatusNotification.ResumeAutoHide();
+    }
+
     /// <summary>
     /// 取消编辑并关闭弹窗。
     /// </summary>

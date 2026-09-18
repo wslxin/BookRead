@@ -2,12 +2,12 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Security;
 using System.Text.Json;
-using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using BookRead.Data;
 using BookRead.Dialogs;
+using BookRead.Controls;
 using BookRead.Models;
 using BookRead.Services;
 
@@ -27,9 +27,6 @@ public partial class SettingsPage : UserControl
 
     /// <summary>设置页请求返回上一页时触发。</summary>
     internal event RoutedEventHandler? BackRequested;
-
-    /// <summary>设置页请求浏览指定 OPDS 书源时触发。</summary>
-    internal event EventHandler<OpdsSettingsRequestedEventArgs>? OpdsBrowseRequested;
 
     /// <summary>设置页中 OPDS 书源列表发生变化时触发。</summary>
     internal event EventHandler<IReadOnlyList<OpdsSource>>? OpdsSourcesChanged;
@@ -111,12 +108,6 @@ public partial class SettingsPage : UserControl
         ShortcutSettingsPanel.Visibility = tab == SettingsTab.Shortcuts ? Visibility.Visible : Visibility.Collapsed;
         DisplaySettingsPanel.Visibility = tab == SettingsTab.Display ? Visibility.Visible : Visibility.Collapsed;
         OpdsSettingsPanel.Visibility = tab == SettingsTab.Opds ? Visibility.Visible : Visibility.Collapsed;
-        SettingsSectionTitle.Text = tab switch
-        {
-            SettingsTab.Shortcuts => "快捷键",
-            SettingsTab.Display => "显示",
-            _ => "OPDS 书源"
-        };
         UpdateSettingsNavigationButton(ShortcutTabButton, tab == SettingsTab.Shortcuts);
         UpdateSettingsNavigationButton(DisplayTabButton, tab == SettingsTab.Display);
         UpdateSettingsNavigationButton(OpdsTabButton, tab == SettingsTab.Opds);
@@ -323,20 +314,6 @@ public partial class SettingsPage : UserControl
                 $"OPDS 书源保存失败：{exception.Message}");
         }
     }
-    /// <summary>
-    /// 请求浏览指定书源。
-    /// </summary>
-    /// <param name="sender">触发请求的浏览按钮。</param>
-    /// <param name="e">路由事件参数。</param>
-    /// <returns>无。</returns>
-    private void BrowseOpdsSource_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: OpdsSource source })
-        {
-            OpdsBrowseRequested?.Invoke(this, new OpdsSettingsRequestedEventArgs(source));
-        }
-    }
-
     /// <summary>
     /// 请求删除指定书源；已下载书籍保留。
     /// </summary>

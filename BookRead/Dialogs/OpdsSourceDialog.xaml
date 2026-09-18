@@ -116,28 +116,37 @@
                 </Grid.RowDefinitions>
                 <controls:InlineNotification
                     x:Name="StatusNotification"
-                    HorizontalAlignment="Center"
+                    HorizontalAlignment="Left"
                     VerticalAlignment="Center"
-                    Margin="0,0,0,12" />
-                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    Margin="0,0,0,12"
+                    IsHitTestVisible="True"
+                    MouseEnter="StatusNotification_MouseEnter"
+                    MouseLeave="StatusNotification_MouseLeave" />
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <Button
                         x:Name="TestButton"
+                        HorizontalAlignment="Left"
                         Style="{StaticResource DialogSecondaryButton}"
                         Content="测试连接"
                         Click="Test_Click" />
-                    <Button
-                        Margin="8,0,0,0"
-                        IsCancel="True"
-                        Style="{StaticResource DialogSecondaryButton}"
-                        Content="取消"
-                        Click="Cancel_Click" />
-                    <Button
-                        IsDefault="True"
-                        Margin="8,0,0,0"
-                        Style="{StaticResource DialogPrimaryButton}"
-                        Content="保存"
-                        Click="Confirm_Click" />
-                </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button
+                            IsCancel="True"
+                            Style="{StaticResource DialogSecondaryButton}"
+                            Content="取消"
+                            Click="Cancel_Click" />
+                        <Button
+                            IsDefault="True"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource DialogPrimaryButton}"
+                            Content="保存"
+                            Click="Confirm_Click" />
+                    </StackPanel>
+                </Grid>
             </Grid>
         </Grid>
     </Border>

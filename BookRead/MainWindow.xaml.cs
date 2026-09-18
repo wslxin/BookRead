@@ -70,7 +70,6 @@ public partial class MainWindow : Window
         TitleBarControl.SettingsRequested += TitleBarControl_SettingsRequested;
         SettingsPageControl.SettingsSaved += SettingsPageControl_SettingsSaved;
         SettingsPageControl.BackRequested += SettingsPageControl_BackRequested;
-        SettingsPageControl.OpdsBrowseRequested += SettingsPageControl_OpdsBrowseRequested;
         SettingsPageControl.OpdsSourcesChanged += SettingsPageControl_OpdsSourcesChanged;
         OpdsPageControl.BackToShelfRequested += OpdsPageControl_BackToShelfRequested;
         OpdsPageControl.SettingsRequested += OpdsPageControl_SettingsRequested;
@@ -835,18 +834,6 @@ public partial class MainWindow : Window
                 "BookRead",
                 $"书籍已下载，但书架数据保存失败：{exception.Message}");
         }
-    }
-
-    /// <summary>
-    /// 从设置页请求浏览指定书源。
-    /// </summary>
-    /// <param name="sender">发起事件的设置页面。</param>
-    /// <param name="e">包含目标书源的事件参数。</param>
-    /// <returns>无。</returns>
-    private void SettingsPageControl_OpdsBrowseRequested(object? sender, OpdsSettingsRequestedEventArgs e)
-    {
-        ShowOpdsBrowsePage();
-        OpdsPageControl.OpenSource(e.Source);
     }
 
     /// <summary>

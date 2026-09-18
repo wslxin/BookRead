@@ -5,13 +5,29 @@
     HorizontalAlignment="Center"
     VerticalAlignment="Bottom"
     Margin="0,0,0,18"
+    MaxWidth="520"
     IsHitTestVisible="False">
     <Border
-        Padding="12,7"
+        x:Name="NotificationBorder"
+        Padding="12,8"
         Background="{DynamicResource Panel}"
         BorderBrush="{DynamicResource Line}"
         BorderThickness="1"
         CornerRadius="5">
-        <TextBlock x:Name="MessageText" Foreground="{DynamicResource TextPrimary}" />
+        <StackPanel Orientation="Horizontal" MaxWidth="496">
+            <TextBlock
+                x:Name="IconText"
+                FontFamily="Segoe Fluent Icons"
+                FontSize="13"
+                Foreground="{DynamicResource TextPrimary}"
+                VerticalAlignment="Top"
+                Margin="0,1,8,0" />
+            <TextBlock
+                x:Name="MessageText"
+                Foreground="{DynamicResource TextPrimary}"
+                TextWrapping="Wrap"
+                MaxWidth="448"
+                VerticalAlignment="Center" />
+        </StackPanel>
     </Border>
 </UserControl>
