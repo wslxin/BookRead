@@ -21,7 +21,7 @@ public partial class OpdsBrowsePage : UserControl
     private readonly OpdsClient _opdsClient;
     private readonly CoverImageCache _coverCache;
     private readonly List<OpdsSource> _sources = [];
-    private readonly List<string> _navigationHistory = [];
+    private readonly List<string?> _navigationHistory = [];
     private readonly ObservableCollection<OpdsEntryViewModel> _entries = [];
     private OpdsSource? _selectedSource;
     private string? _currentPageUrl;
@@ -31,11 +31,17 @@ public partial class OpdsBrowsePage : UserControl
     private bool _isNavigating;
     private readonly Dictionary<string, CancellationTokenSource> _downloadCancellations = new(StringComparer.Ordinal);
 
-    /// <summary>浏览页请求返回书架时触发。</summary>
-    internal event RoutedEventHandler? BackToShelfRequested;
+    /// <summary>浏览页标题变化时触发，事件参数为最新标题。</summary>
+    internal event EventHandler<string>? PageTitleChanged;
 
-    /// <summary>浏览页请求打开 OPDS 书源设置时触发。</summary>
-    internal event EventHandler? SettingsRequested;
+    /// <summary>浏览页上一级导航可用状态变化时触发。</summary>
+    internal event EventHandler? BackLevelStateChanged;
+
+    /// <summary>获取浏览页当前显示的标题。</summary>
+    internal string CurrentPageTitle { get; private set; } = "OPDS 书源";
+
+    /// <summary>获取一个值，该值指示是否存在可返回的上一级目录。</summary>
+    internal bool CanGoBack => _navigationHistory.Count > 0;
 
     /// <summary>浏览页完成下载并请求将书籍加入书架时触发。</summary>
     internal event EventHandler<OpdsBookAddedEventArgs>? BookAdded;
@@ -92,7 +98,7 @@ public partial class OpdsBrowsePage : UserControl
             StatusText.Text = "还没有 OPDS 书源。请打开设置页添加一个书源。";
             StatusText.Visibility = Visibility.Visible;
             EntryList.ItemsSource = null;
-            PageTitleText.Text = "OPDS 书源";
+            SetPageTitle("OPDS 书源");
             return;
         }
 
@@ -138,39 +144,15 @@ public partial class OpdsBrowsePage : UserControl
         _navigationHistory.Clear();
         _currentPageUrl = null;
         _searchUrl = null;
-        BackLevelButton.IsEnabled = false;
+        RefreshBackLevelState();
         SearchBackButton.Visibility = Visibility.Collapsed;
-    }
-
-    /// <summary>
-    /// 请求返回书架页。
-    /// </summary>
-    /// <param name="sender">触发请求的返回按钮。</param>
-    /// <param name="e">路由事件参数。</param>
-    /// <returns>无。</returns>
-    private void BackToShelf_Click(object sender, RoutedEventArgs e)
-    {
-        BackToShelfRequested?.Invoke(this, e);
-    }
-
-    /// <summary>
-    /// 请求打开书源设置页。
-    /// </summary>
-    /// <param name="sender">触发请求的设置按钮。</param>
-    /// <param name="e">路由事件参数。</param>
-    /// <returns>无。</returns>
-    private void ManageSources_Click(object sender, RoutedEventArgs e)
-    {
-        SettingsRequested?.Invoke(this, e);
     }
 
     /// <summary>
     /// 刷新当前目录。
     /// </summary>
-    /// <param name="sender">触发请求的刷新按钮。</param>
-    /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void Refresh_Click(object sender, RoutedEventArgs e)
+    internal void Refresh()
     {
         _ = LoadPageAsync(_currentPageUrl, append: false);
     }
@@ -199,18 +181,16 @@ public partial class OpdsBrowsePage : UserControl
     /// <summary>
     /// 响应返回上一级请求，并保留上一级目录状态。
     /// </summary>
-    /// <param name="sender">触发请求的上一级按钮。</param>
-    /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void BackLevel_Click(object sender, RoutedEventArgs e)
+    internal void GoBack()
     {
         if (_navigationHistory.Count == 0)
         {
-            BackLevelButton.IsEnabled = false;
+            RefreshBackLevelState();
             return;
         }
 
-        string previousUrl = _navigationHistory[^1];
+        string? previousUrl = _navigationHistory[^1];
         _navigationHistory.RemoveAt(_navigationHistory.Count - 1);
         _searchUrl = null;
         SearchBackButton.Visibility = Visibility.Collapsed;
@@ -265,7 +245,7 @@ public partial class OpdsBrowsePage : UserControl
 
             _ = LoadVisibleCoversAsync();
             _nextPageUrl = page.NextPageUrl;
-            PageTitleText.Text = page.Title;
+            SetPageTitle(page.Title);
             StatusText.Visibility = Visibility.Collapsed;
             if (_entries.Count == 0)
             {
@@ -275,19 +255,15 @@ public partial class OpdsBrowsePage : UserControl
 
             if (!append && preserveHistory)
             {
-                if (!string.IsNullOrWhiteSpace(_currentPageUrl) &&
-                    !string.Equals(_currentPageUrl, url, StringComparison.Ordinal))
-                {
-                    _navigationHistory.Add(_currentPageUrl);
-                }
-                else if (!string.IsNullOrWhiteSpace(_currentPageUrl) && _navigationHistory.Count == 0)
+                // 根目录地址为 null，也必须入栈，否则从根目录进入子目录后无法返回上一级。
+                if (!string.Equals(_currentPageUrl, url, StringComparison.Ordinal))
                 {
                     _navigationHistory.Add(_currentPageUrl);
                 }
             }
 
             _currentPageUrl = url;
-            BackLevelButton.IsEnabled = _navigationHistory.Count > 0;
+            RefreshBackLevelState();
             LoadMoreButton.Visibility = string.IsNullOrWhiteSpace(_nextPageUrl)
                 ? Visibility.Collapsed
                 : Visibility.Visible;
@@ -301,7 +277,7 @@ public partial class OpdsBrowsePage : UserControl
 
             StatusText.Text = $"加载失败：{exception.Message}";
             StatusText.Visibility = Visibility.Visible;
-            PageTitleText.Text = _selectedSource.Name;
+            SetPageTitle(_selectedSource?.Name ?? CurrentPageTitle);
 
             // 加载失败时同步清空本页搜索模板，避免沿用上一本书源的搜索能力造成误导。
             _nextPageUrl = null;
@@ -312,6 +288,27 @@ public partial class OpdsBrowsePage : UserControl
         {
             _isNavigating = false;
         }
+    }
+
+    /// <summary>
+    /// 更新浏览页标题并通知外部标题栏。
+    /// </summary>
+    /// <param name="title">要显示的浏览页标题。</param>
+    /// <exception cref="ArgumentException"><paramref name="title"/> 为 null、空字符串或仅包含空白字符时抛出。</exception>
+    private void SetPageTitle(string title)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        CurrentPageTitle = title;
+        PageTitleChanged?.Invoke(this, title);
+    }
+
+    /// <summary>
+    /// 通知外部标题栏同步上一级导航按钮状态。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void RefreshBackLevelState()
+    {
+        BackLevelStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

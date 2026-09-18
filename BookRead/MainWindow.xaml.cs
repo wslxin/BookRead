@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private string? _currentBookTitle;
     private string? _currentChapterTitle;
     private bool _settingsOpenedFromReader;
+    private bool _settingsOpenedFromOpds;
     private readonly Forms.NotifyIcon _notifyIcon;
     private TrayMenuWindow? _trayMenuWindow;
     private bool _isExiting;
@@ -67,12 +68,14 @@ public partial class MainWindow : Window
         ReaderPageControl.ChapterChanged += ReaderPageControl_ChapterChanged;
         ReaderPageControl.ReaderTransparencyChanged += ReaderPageControl_ReaderTransparencyChanged;
         TitleBarControl.ShelfRequested += TitleBarControl_ShelfRequested;
+        TitleBarControl.BackRequested += TitleBarControl_BackRequested;
         TitleBarControl.SettingsRequested += TitleBarControl_SettingsRequested;
+        TitleBarControl.RefreshRequested += TitleBarControl_RefreshRequested;
         SettingsPageControl.SettingsSaved += SettingsPageControl_SettingsSaved;
         SettingsPageControl.BackRequested += SettingsPageControl_BackRequested;
         SettingsPageControl.OpdsSourcesChanged += SettingsPageControl_OpdsSourcesChanged;
-        OpdsPageControl.BackToShelfRequested += OpdsPageControl_BackToShelfRequested;
-        OpdsPageControl.SettingsRequested += OpdsPageControl_SettingsRequested;
+        OpdsPageControl.PageTitleChanged += OpdsPageControl_PageTitleChanged;
+        OpdsPageControl.BackLevelStateChanged += OpdsPageControl_BackLevelStateChanged;
         OpdsPageControl.BookAdded += OpdsPageControl_BookAdded;
         OpdsPageControl.FindExistingOpdsBook = FindExistingOpdsBook;
         LoadShortcutSettings();
@@ -849,26 +852,25 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 响应 OPDS 浏览页返回书架请求。
+    /// 响应浏览页标题变化并同步到标题栏。
     /// </summary>
     /// <param name="sender">发起事件的浏览页面。</param>
-    /// <param name="e">路由事件参数。</param>
+    /// <param name="e">最新浏览页标题。</param>
     /// <returns>无。</returns>
-    private void OpdsPageControl_BackToShelfRequested(object? sender, RoutedEventArgs e)
+    private void OpdsPageControl_PageTitleChanged(object? sender, string e)
     {
-        ShowShelfPage();
+        TitleBarControl.SetBookInfo(e);
     }
 
     /// <summary>
-    /// 响应 OPDS 浏览页打开设置页请求。
+    /// 响应浏览页导航状态变化并同步返回按钮目标。
     /// </summary>
     /// <param name="sender">发起事件的浏览页面。</param>
-    /// <param name="e">路由事件参数。</param>
+    /// <param name="e">事件参数。</param>
     /// <returns>无。</returns>
-    private void OpdsPageControl_SettingsRequested(object? sender, EventArgs e)
+    private void OpdsPageControl_BackLevelStateChanged(object? sender, EventArgs e)
     {
-        ShowSettingsPage();
-        SettingsPageControl.LoadOpdsSources();
+        TitleBarControl.SetBackButtonTarget();
     }
 
     /// <summary>
@@ -888,8 +890,10 @@ public partial class MainWindow : Window
         OpdsPageControl.Visibility = Visibility.Visible;
         _isOpdsPageVisible = true;
         SetTitleBarVisible(true);
-        TitleBarControl.SetBackButtonVisible(false);
-        TitleBarControl.ClearBookInfo();
+        TitleBarControl.SetBackButtonVisible(true);
+        TitleBarControl.SetBrowseControlsVisible(true);
+        TitleBarControl.SetBackButtonTarget();
+        TitleBarControl.SetBookInfo(OpdsPageControl.CurrentPageTitle);
         UpdateWindowFrameClip();
         OpdsPageControl.LoadSources();
     }
@@ -913,6 +917,7 @@ public partial class MainWindow : Window
         _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
         TitleBarControl.SetBackButtonVisible(false);
+        TitleBarControl.SetBrowseControlsVisible(false);
         TitleBarControl.ClearBookInfo();
         _currentChapterTitle = null;
         UpdateWindowFrameClip();
@@ -937,6 +942,8 @@ public partial class MainWindow : Window
         _isOpdsPageVisible = false;
         SetTitleBarVisible(!ReaderPageControl.IsReaderBackgroundTransparent);
         TitleBarControl.SetBackButtonVisible(true);
+        TitleBarControl.SetBackButtonTarget();
+        TitleBarControl.SetBrowseControlsVisible(false);
         UpdateTitleBarReadingTitle();
         UpdateWindowFrameClip();
     }
@@ -944,8 +951,9 @@ public partial class MainWindow : Window
     /// <summary>
     /// 显示设置页，并记录设置页打开前显示的页面。
     /// </summary>
+    /// <param name="openOpdsTab">是否在打开后直接显示 OPDS 书源管理标签。</param>
     /// <returns>无。</returns>
-    private void ShowSettingsPage()
+    private void ShowSettingsPage(bool openOpdsTab = false)
     {
         if (SettingsPageControl.Visibility == Visibility.Visible)
         {
@@ -953,14 +961,22 @@ public partial class MainWindow : Window
         }
 
         _settingsOpenedFromReader = ReaderPageControl.Visibility == Visibility.Visible;
+        _settingsOpenedFromOpds = !_settingsOpenedFromReader && OpdsPageControl.Visibility == Visibility.Visible;
         SettingsPageControl.LoadSettings(_shortcutSettings);
+        if (openOpdsTab)
+        {
+            SettingsPageControl.OpenOpdsTab();
+        }
+
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Visible;
         OpdsPageControl.Visibility = Visibility.Collapsed;
         _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
-        TitleBarControl.SetBackButtonVisible(false);
+        TitleBarControl.SetBackButtonVisible(true);
+        TitleBarControl.SetBackButtonTarget();
+        TitleBarControl.SetBrowseControlsVisible(false);
         TitleBarControl.ClearBookInfo();
         UpdateWindowFrameClip();
     }
@@ -1018,6 +1034,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_settingsOpenedFromOpds)
+        {
+            ShowOpdsBrowsePage();
+            return;
+        }
+
         ShowShelfPage();
     }
 
@@ -1035,16 +1057,22 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 响应标题栏返回请求，切回书架页。
+    /// 响应标题栏返回请求，优先返回上一级目录，否则返回书架。
     /// </summary>
     /// <param name="sender">触发事件的标题栏控件。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void TitleBarControl_ShelfRequested(object sender, RoutedEventArgs e)
+    private void TitleBarControl_BackRequested(object sender, RoutedEventArgs e)
     {
-        if (_isOpdsPageVisible)
+        if (SettingsPageControl.Visibility == Visibility.Visible)
         {
-            ShowOpdsBrowsePage();
+            NavigateBackFromSettings();
+            return;
+        }
+
+        if (_isOpdsPageVisible && OpdsPageControl.CanGoBack)
+        {
+            OpdsPageControl.GoBack();
             return;
         }
 
@@ -1059,7 +1087,29 @@ public partial class MainWindow : Window
     /// <returns>无。</returns>
     private void TitleBarControl_SettingsRequested(object? sender, RoutedEventArgs e)
     {
-        ShowSettingsPage();
+        ShowSettingsPage(openOpdsTab: _isOpdsPageVisible);
+    }
+
+    /// <summary>
+    /// 响应标题栏返回书架请求并切换到书架页。
+    /// </summary>
+    /// <param name="sender">触发事件的标题栏控件。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void TitleBarControl_ShelfRequested(object? sender, RoutedEventArgs e)
+    {
+        ShowShelfPage();
+    }
+
+    /// <summary>
+    /// 响应标题栏刷新请求并通知浏览页刷新目录。
+    /// </summary>
+    /// <param name="sender">触发事件的标题栏控件。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void TitleBarControl_RefreshRequested(object? sender, RoutedEventArgs e)
+    {
+        OpdsPageControl.Refresh();
     }
 
     /// <summary>

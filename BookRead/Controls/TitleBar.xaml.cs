@@ -9,11 +9,17 @@ namespace BookRead.Controls;
 /// </summary>
 public partial class TitleBar : System.Windows.Controls.UserControl
 {
-    /// <summary>请求所属窗口返回书架视图时触发。</summary>
+    /// <summary>请求所属窗口直接返回书架视图时触发。</summary>
     public event RoutedEventHandler? ShelfRequested;
+
+    /// <summary>请求所属窗口返回上一视图或上一级目录时触发。</summary>
+    public event RoutedEventHandler? BackRequested;
 
     /// <summary>请求所属窗口打开设置页时触发。</summary>
     public event RoutedEventHandler? SettingsRequested;
+
+    /// <summary>请求所属窗口刷新当前 OPDS 目录时触发。</summary>
+    public event RoutedEventHandler? RefreshRequested;
 
     /// <summary>
     /// 初始化标题栏控件。
@@ -24,13 +30,35 @@ public partial class TitleBar : System.Windows.Controls.UserControl
     }
 
     /// <summary>
-    /// 设置标题栏返回书架按钮的可见状态。
+    /// 设置标题栏返回按钮的可见状态。
     /// </summary>
     /// <param name="isVisible">需要显示时为 true，否则为 false。</param>
     /// <returns>无。</returns>
     public void SetBackButtonVisible(bool isVisible)
     {
-        BackToShelfButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        BackButton.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 设置 OPDS 浏览页专属标题栏控件的可见状态。
+    /// </summary>
+    /// <param name="isVisible">当前处于 OPDS 浏览页时为 true，否则为 false。</param>
+    /// <returns>无。</returns>
+    public void SetBrowseControlsVisible(bool isVisible)
+    {
+        BrowseActionsPanel.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+        SettingsButton.ToolTip = isVisible ? "管理书源" : "设置";
+    }
+
+    /// <summary>
+    /// 将返回按钮设置为统一的“返回”显示状态。
+    /// </summary>
+    /// <returns>无。</returns>
+    public void SetBackButtonTarget()
+    {
+        BackButtonIcon.Text = "\uE76B";
+        BackButtonText.Text = "返回";
+        BackButton.ToolTip = "返回";
     }
 
     /// <summary>
@@ -124,14 +152,37 @@ public partial class TitleBar : System.Windows.Controls.UserControl
     }
 
     /// <summary>
-    /// 通知所属窗口返回书架视图。
+    /// 通知所属窗口返回上一视图或上一级目录。
     /// </summary>
-    /// <param name="sender">触发事件的返回书架按钮。</param>
+    /// <param name="sender">触发事件的返回按钮。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void BackToShelf_Click(object sender, RoutedEventArgs e)
+    private void Back_Click(object sender, RoutedEventArgs e)
     {
+        BackRequested?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// 处理返回按钮右键点击，直接返回书架。
+    /// </summary>
+    /// <param name="sender">触发右键操作的返回按钮。</param>
+    /// <param name="e">鼠标按钮事件参数。</param>
+    /// <returns>无。</returns>
+    private void BackButton_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
         ShelfRequested?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// 通知所属窗口刷新当前 OPDS 目录。
+    /// </summary>
+    /// <param name="sender">触发刷新操作的按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshRequested?.Invoke(this, e);
     }
 
 }

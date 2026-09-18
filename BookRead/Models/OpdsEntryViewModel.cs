@@ -31,6 +31,9 @@ internal sealed class OpdsEntryViewModel
     /// <summary>获取下载按钮可显示的标题。</summary>
     public string DownloadTitle => IsDownloading ? "取消" : "下载";
 
-    /// <summary>获取条目副标题，优先显示作者。</summary>
-    public string Subtitle => string.IsNullOrWhiteSpace(Entry.Author) ? "未知作者" : Entry.Author!;
+    /// <summary>获取是否应在卡片上显示作者；目录条目不显示作者。</summary>
+    public bool ShowAuthor => !Entry.IsNavigation && !string.IsNullOrWhiteSpace(Entry.Author);
+
+    /// <summary>获取条目作者；缺少作者信息或为目录条目时返回空字符串。</summary>
+    public string Subtitle => Entry.Author ?? string.Empty;
 }

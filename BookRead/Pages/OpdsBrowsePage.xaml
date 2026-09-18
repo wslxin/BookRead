@@ -5,72 +5,147 @@
     Background="{DynamicResource AppBackground}">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style x:Key="SourceComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Padding" Value="11,8" />
+            <Setter Property="Margin" Value="5,2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border
+                            x:Name="ItemBorder"
+                            Background="Transparent"
+                            CornerRadius="5"
+                            Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ListHover}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource ListSelected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style
+            x:Key="SourceComboBox"
+            BasedOn="{StaticResource {x:Type ComboBox}}"
+            TargetType="ComboBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource SourceComboBoxItem}" />
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock
+                            Text="{Binding Name}"
+                            TextTrimming="CharacterEllipsis"
+                            VerticalAlignment="Center" />
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border
+                                x:Name="ComboBoxRoot"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" />
+                            <ToggleButton
+                                x:Name="PART_ToggleButton"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Focusable="False"
+                                IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <!-- 覆盖系统默认 ToggleButton 模板，避免浅蓝色悬停高亮破坏深色主题。 -->
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="{TemplateBinding Background}" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter
+                                Margin="12,0,34,0"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding SelectionBoxItem}"
+                                ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                IsHitTestVisible="False" />
+                            <TextBlock
+                                Margin="0,0,13,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextMuted}"
+                                Text="&#xE70D;"
+                                IsHitTestVisible="False" />
+                            <Popup
+                                x:Name="PART_Popup"
+                                AllowsTransparency="True"
+                                IsOpen="{TemplateBinding IsDropDownOpen}"
+                                Placement="Bottom"
+                                PopupAnimation="Fade">
+                                <Border
+                                    MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Margin="0,6,0,0"
+                                    Background="{DynamicResource DialogBackground}"
+                                    BorderBrush="{DynamicResource InputBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    SnapsToDevicePixels="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect
+                                            BlurRadius="18"
+                                            Direction="270"
+                                            Opacity="0.35"
+                                            ShadowDepth="5"
+                                            Color="#000000" />
+                                    </Border.Effect>
+                                    <ScrollViewer Margin="3" VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ComboBoxRoot" Property="Background" Value="{DynamicResource ButtonHover}" />
+                                <Setter TargetName="ComboBoxRoot" Property="BorderBrush" Value="{DynamicResource Line}" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="ComboBoxRoot" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ComboBoxRoot" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <Grid Margin="20,18">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0">
-            <StackPanel Orientation="Horizontal">
-                <Button
-                    x:Name="BackToShelfButton"
-                    Height="34"
-                    Padding="10,0"
-                    Margin="0,0,10,0"
-                    ToolTip="返回书架"
-                    Click="BackToShelf_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE76B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" Margin="0,0,7,0" />
-                        <TextBlock Text="书架" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button
-                    x:Name="BackLevelButton"
-                    Height="34"
-                    Padding="10,0"
-                    ToolTip="返回上一级"
-                    IsEnabled="False"
-                    Click="BackLevel_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" Margin="0,0,7,0" />
-                        <TextBlock Text="上一级" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button
-                    Height="34"
-                    Padding="10,0"
-                    Margin="10,0,0,0"
-                    ToolTip="刷新目录"
-                    Click="Refresh_Click">
-                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" />
-                </Button>
-                <Button
-                    Height="34"
-                    Padding="10,0"
-                    Margin="8,0,0,0"
-                    ToolTip="管理书源"
-                    Click="ManageSources_Click">
-                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" />
-                </Button>
-            </StackPanel>
-            <TextBlock
-                x:Name="PageTitleText"
-                Margin="14,0"
-                VerticalAlignment="Center"
-                FontSize="18"
-                FontWeight="SemiBold"
-                Foreground="{DynamicResource TextPrimary}"
-                TextTrimming="CharacterEllipsis"
-                Text="OPDS 书源" />
-        </DockPanel>
-
-        <Grid Grid.Row="1" Margin="0,14,0,10">
+        <Grid Grid.Row="0" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220" />
                 <ColumnDefinition Width="*" />
@@ -79,6 +154,7 @@
             <ComboBox
                 x:Name="SourceComboBox"
                 Height="38"
+                Style="{StaticResource SourceComboBox}"
                 SelectionChanged="SourceComboBox_SelectionChanged" />
             <Grid Grid.Column="1" Margin="10,0,0,0">
                 <Grid.ColumnDefinitions>
@@ -112,7 +188,7 @@
                 Click="SearchBack_Click" />
         </Grid>
 
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
                 <TextBlock
                     x:Name="StatusText"
@@ -123,9 +199,27 @@
                     Visibility="Collapsed" />
                 <ListBox
                     x:Name="EntryList"
+                    HorizontalAlignment="Center"
                     Background="Transparent"
                     BorderThickness="0"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                        <!-- 清除全局列表项模板的隐藏内边距，避免浏览页卡片每行少排一项并造成右侧空白。 -->
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Center" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel />
@@ -135,8 +229,7 @@
                         <DataTemplate>
                             <Button
                                 Width="170"
-                                Height="240"
-                                Margin="6"
+                                Margin="6,14"
                                 Padding="0"
                                 HorizontalContentAlignment="Stretch"
                                 Background="{DynamicResource SurfaceBackground}"
@@ -153,7 +246,7 @@
                                             Tag="{Binding}" />
                                     </ContextMenu>
                                 </Button.ContextMenu>
-                                <Grid Margin="10">
+                                <Grid Margin="10,18">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*" />
                                         <RowDefinition Height="Auto" />
@@ -187,11 +280,13 @@
                                     <TextBlock
                                         Grid.Row="1"
                                         Margin="0,10,0,0"
+                                        HorizontalAlignment="Center"
                                         Text="{Binding Entry.Title}"
                                         FontSize="13"
                                         FontWeight="SemiBold"
                                         Foreground="{DynamicResource TextPrimary}"
                                         TextWrapping="Wrap"
+                                        TextAlignment="Center"
                                         MaxHeight="36"
                                         TextTrimming="CharacterEllipsis" />
                                     <TextBlock
@@ -200,6 +295,7 @@
                                         Text="{Binding Subtitle}"
                                         FontSize="11"
                                         Foreground="{DynamicResource TextMuted}"
+                                        Visibility="{Binding ShowAuthor, Converter={StaticResource BooleanToVisibilityConverter}}"
                                         TextTrimming="CharacterEllipsis"
                                         ToolTip="{Binding Entry.Summary}" />
                                     <ProgressBar
@@ -221,7 +317,7 @@
 
         <Button
             x:Name="LoadMoreButton"
-            Grid.Row="3"
+            Grid.Row="2"
             Height="38"
             Margin="0,12,0,0"
             Content="加载更多"

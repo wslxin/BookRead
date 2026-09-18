@@ -114,6 +114,15 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
+    /// 将设置页直接切换到 OPDS 书源管理标签。
+    /// </summary>
+    /// <returns>无。</returns>
+    internal void OpenOpdsTab()
+    {
+        SelectSettingsTab(SettingsTab.Opds);
+    }
+
+    /// <summary>
     /// 从磁盘加载 OPDS 书源列表。
     /// </summary>
     /// <returns>无。</returns>

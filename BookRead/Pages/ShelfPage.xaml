@@ -140,8 +140,6 @@
                         Height="32"
                         Padding="0"
                         ToolTip="添加书籍"
-                        Background="Transparent"
-                        BorderThickness="0"
                         Click="ImportMenu_Click">
                         <TextBlock
                             Text="&#xE710;"

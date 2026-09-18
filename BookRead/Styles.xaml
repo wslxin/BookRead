@@ -139,6 +139,9 @@
             </Trigger>
         </Style.Triggers>
     </Style>
+    <Style TargetType="MenuItem">
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource SurfaceBackground}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
