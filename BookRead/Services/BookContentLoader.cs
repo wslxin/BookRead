@@ -74,7 +74,6 @@ internal static partial class BookContentLoader
             {
                 ".txt" or ".text" => await LoadPlainTextAsync(filePath),
                 ".md" or ".markdown" => await LoadMarkdownAsync(filePath),
-                ".html" or ".htm" => await LoadHtmlAsync(filePath),
                 ".epub" => await LoadEpubAsync(filePath),
                 ".docx" => await LoadDocxAsync(filePath),
                 _ => throw new BookContentLoadException($"暂不支持“{extension}”格式的书籍文件。")
@@ -117,18 +116,6 @@ internal static partial class BookContentLoader
         }
 
         return ChapterParser.ParseMarkdown(markdown);
-    }
-
-    /// <summary>
-    /// 读取 HTML 文件，将可见文本转换为纯文本并拆分正文。
-    /// </summary>
-    /// <param name="filePath">HTML 文件路径。</param>
-    /// <returns>解析后的章节列表。</returns>
-    private static async Task<IReadOnlyList<BookChapter>> LoadHtmlAsync(string filePath)
-    {
-        string html = await ReadTextFileAsync(filePath);
-        string content = ExtractHtmlText(html);
-        return ParsePlainText(content);
     }
 
     /// <summary>

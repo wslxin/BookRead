@@ -34,7 +34,6 @@ public partial class ReaderPage : UserControl
     private bool _isMarkdownBook;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.CreateDefault();
     private readonly DispatcherTimer _scrollbarHideTimer;
-    private readonly DispatcherTimer _styleNotificationHideTimer;
     private readonly List<BookChapter> _chapters = [];
     private readonly List<string> _bookPages = [];
     private readonly List<TextBlock> _markdownChapterHeadings = [];
@@ -69,11 +68,6 @@ public partial class ReaderPage : UserControl
             Interval = TimeSpan.FromMilliseconds(900)
         };
         _scrollbarHideTimer.Tick += ScrollbarHideTimer_Tick;
-        _styleNotificationHideTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(1200)
-        };
-        _styleNotificationHideTimer.Tick += StyleNotificationHideTimer_Tick;
     }
 
     /// <summary>
@@ -87,11 +81,7 @@ public partial class ReaderPage : UserControl
     /// <exception cref="IOException">文件读取失败时抛出。</exception>
     /// <exception cref="UnauthorizedAccessException">没有权限读取文件时抛出。</exception>
     /// <exception cref="BookContentLoadException">文件格式不受支持、内容损坏或正文为空时抛出。</exception>
-    public async Task LoadBookAsync(
-        string filePath,
-        int initialChapterIndex = 0,
-        int initialPageIndex = 0,
-        string? displayTitle = null)
+    public async Task LoadBookAsync(string filePath, int initialChapterIndex = 0, int initialPageIndex = 0, string? displayTitle = null)
     {
         string extension = Path.GetExtension(filePath);
         _isMarkdownBook =
@@ -846,31 +836,6 @@ public partial class ReaderPage : UserControl
     }
 
     /// <summary>
-    /// 显示阅读设置反馈并重新计时隐藏操作。
-    /// </summary>
-    /// <param name="message">要显示的反馈文本。</param>
-    /// <returns>无。</returns>
-    private void ShowReaderNotification(string message)
-    {
-        ReaderStyleNotificationText.Text = message;
-        ReaderStyleNotification.Visibility = Visibility.Visible;
-        _styleNotificationHideTimer.Stop();
-        _styleNotificationHideTimer.Start();
-    }
-
-    /// <summary>
-    /// 隐藏阅读设置操作提示。
-    /// </summary>
-    /// <param name="sender">触发计时器的对象。</param>
-    /// <param name="e">计时器事件参数。</param>
-    /// <returns>无。</returns>
-    private void StyleNotificationHideTimer_Tick(object? sender, EventArgs e)
-    {
-        _styleNotificationHideTimer.Stop();
-        ReaderStyleNotification.Visibility = Visibility.Collapsed;
-    }
-
-    /// <summary>
     /// 在深色和浅色应用主题之间切换，并同步更新主题按钮状态。
     /// </summary>
     /// <param name="sender">触发主题切换的太阳按钮。</param>
@@ -882,8 +847,14 @@ public partial class ReaderPage : UserControl
         ReadingThemeIcon.Text = isLightTheme ? "\uE708" : "\uE706";
         ReadingThemeButton.ToolTip = isLightTheme ? "切换为深色主题" : "切换为浅色主题";
     }
-
-    /// <summary>切换右侧章节面板的显示状态。</summary>
+    /// <summary>
+    /// 显示阅读设置反馈并重新计时隐藏操作。
+    /// </summary>
+    /// <param name="message">要显示的反馈文本。</param>
+    private void ShowReaderNotification(string message)
+    {
+        ReaderStyleNotification.Show(message);
+    }
     /// <param name="sender">触发事件的章节按钮。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>

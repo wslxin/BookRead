@@ -33,6 +33,7 @@
                 <pages:ShelfPage x:Name="ShelfPageControl" />
                 <pages:ReaderPage x:Name="ReaderPageControl" Visibility="Collapsed" />
                 <pages:SettingsPage x:Name="SettingsPageControl" Visibility="Collapsed" />
+                <pages:OpdsBrowsePage x:Name="OpdsPageControl" Visibility="Collapsed" />
             </Grid>
         </Grid>
     </Border>

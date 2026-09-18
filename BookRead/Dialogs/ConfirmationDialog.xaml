@@ -122,6 +122,12 @@
                 Orientation="Horizontal"
                 HorizontalAlignment="Right">
                 <Button
+                    x:Name="AlternativeButton"
+                    Margin="0,0,8,0"
+                    Style="{StaticResource DialogSecondaryButton}"
+                    Visibility="Collapsed"
+                    Click="Alternative_Click" />
+                <Button
                     x:Name="CancelButton"
                     Margin="0,0,8,0"
                     IsCancel="True"
@@ -135,3 +141,5 @@
         </Grid>
     </Border>
 </Window>
+
+

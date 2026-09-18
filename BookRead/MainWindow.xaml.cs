@@ -14,6 +14,7 @@ using Forms = System.Windows.Forms;
 using BookRead.Dialogs;
 using BookRead.Models;
 using BookRead.Services;
+using BookRead.Data;
 using BookRead.Pages;
 
 namespace BookRead;
@@ -34,9 +35,15 @@ public partial class MainWindow : Window
     private readonly Forms.NotifyIcon _notifyIcon;
     private TrayMenuWindow? _trayMenuWindow;
     private bool _isExiting;
+    private readonly OpdsSourceStore _opdsSourceStore = new();
+    private bool _isOpdsPageVisible;
+    private List<OpdsSource> _opdsSources = [];
 
     /// <summary>书架页窗口宽度。</summary>
     private const double ShelfWindowWidth = 500;
+
+    /// <summary>OPDS 浏览页窗口宽度。</summary>
+    private const double OpdsWindowWidth = 1020;
 
     /// <summary>阅读页窗口宽度。</summary>
     private const double ReaderWindowWidth = 1020;
@@ -50,6 +57,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _notifyIcon = CreateNotifyIcon();
         ShelfPageControl.ImportRequested += OpenBook_Click;
+        ShelfPageControl.OpdsRequested += BrowseOpds_Click;
         ShelfPageControl.BookOpenRequested += ShelfPageControl_BookOpenRequested;
         ShelfPageControl.BookRemovalRequested += ShelfPageControl_BookRemovalRequested;
         ShelfPageControl.BookRenameRequested += ShelfPageControl_BookRenameRequested;
@@ -62,6 +70,12 @@ public partial class MainWindow : Window
         TitleBarControl.SettingsRequested += TitleBarControl_SettingsRequested;
         SettingsPageControl.SettingsSaved += SettingsPageControl_SettingsSaved;
         SettingsPageControl.BackRequested += SettingsPageControl_BackRequested;
+        SettingsPageControl.OpdsBrowseRequested += SettingsPageControl_OpdsBrowseRequested;
+        SettingsPageControl.OpdsSourcesChanged += SettingsPageControl_OpdsSourcesChanged;
+        OpdsPageControl.BackToShelfRequested += OpdsPageControl_BackToShelfRequested;
+        OpdsPageControl.SettingsRequested += OpdsPageControl_SettingsRequested;
+        OpdsPageControl.BookAdded += OpdsPageControl_BookAdded;
+        OpdsPageControl.FindExistingOpdsBook = FindExistingOpdsBook;
         LoadShortcutSettings();
         ReaderPageControl.ApplyShortcutSettings(_shortcutSettings);
         LoadShelf();
@@ -274,6 +288,18 @@ public partial class MainWindow : Window
         _notifyIcon.Dispose();
     }
 
+
+    /// <summary>
+    /// 响应菜单中的 OPDS 书源浏览请求。
+    /// </summary>
+    /// <param name="sender">触发事件的菜单项。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void BrowseOpds_Click(object sender, RoutedEventArgs e)
+    {
+        ShowOpdsBrowsePage();
+    }
+
     /// <summary>
     /// 打开本地书籍文件并切换到阅读页。
     /// </summary>
@@ -286,7 +312,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "支持的书籍|*.txt;*.text;*.md;*.markdown;*.html;*.htm;*.epub;*.docx|文本文件|*.txt;*.text|Markdown|*.md;*.markdown|网页文件|*.html;*.htm|EPUB 电子书|*.epub|Word 文档|*.docx|所有文件|*.*",
+            Filter = "支持的书籍|*.txt;*.text;*.md;*.markdown;*.epub;*.docx|文本文件|*.txt;*.text|Markdown|*.md;*.markdown|EPUB 电子书|*.epub|Word 文档|*.docx|所有文件|*.*",
             Title = "导入本地书籍"
         };
 
@@ -312,11 +338,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            MessageBox.Show(
-                $"书架数据读取失败：{exception.Message}",
+            ConfirmationDialog.ShowAlert(
+                this,
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书架数据读取失败：{exception.Message}");
             ShelfPageControl.SetBooks(_shelfBooks);
         }
     }
@@ -345,12 +370,10 @@ public partial class MainWindow : Window
         string? directory = Path.GetDirectoryName(e.Book.FilePath);
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
         {
-            MessageBox.Show(
+            ConfirmationDialog.ShowAlert(
                 this,
-                $"书籍所在文件夹不存在：{directory ?? e.Book.FilePath}",
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书籍所在文件夹不存在：{directory ?? e.Book.FilePath}");
             return;
         }
 
@@ -369,12 +392,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            MessageBox.Show(
+            ConfirmationDialog.ShowAlert(
                 this,
-                $"无法打开书籍所在文件夹：{exception.Message}",
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"无法打开书籍所在文件夹：{exception.Message}");
         }
     }
 
@@ -509,17 +530,37 @@ public partial class MainWindow : Window
     /// <returns>无。</returns>
     private async void ShelfPageControl_BookRemovalRequested(object? sender, BookOpenRequestedEventArgs e)
     {
-        bool confirmed = ConfirmationDialog.ShowFor(
+        // OPDS 下载书籍由应用托管，允许用户在移除记录时清理文件；本地书籍仍保持只移除记录。
+        ConfirmationDialogResult removalResult = ConfirmationDialog.ShowFor(
             this,
             new ConfirmationDialogOptions(
                 "从书架移除",
                 $"确定移除《{e.Book.Title}》吗？",
-                "这只会移除书架记录，原始文件会保留。",
-                ConfirmText: "移除",
+                e.Book.OpdsSourceId is null
+                    ? "这只会移除书架记录，原始文件会保留。"
+                    : "可以选择仅移除书架记录，或同时删除应用托管目录中的下载文件。",
+                ConfirmText: "仅移除记录",
+                AlternativeText: e.Book.OpdsSourceId is null ? null : "同时删除文件",
                 IsDestructive: true));
-        if (!confirmed)
+        if (removalResult == ConfirmationDialogResult.Cancel)
         {
             return;
+        }
+
+        if (removalResult == ConfirmationDialogResult.Alternative && File.Exists(e.Book.FilePath))
+        {
+            try
+            {
+                File.Delete(e.Book.FilePath);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                ConfirmationDialog.ShowAlert(
+                    this,
+                    "BookRead",
+                    $"书架记录已保留，但下载文件删除失败：{exception.Message}");
+                return;
+            }
         }
 
         // 先保存候选列表，确保写入失败时界面与内存中的原记录仍然存在。
@@ -536,11 +577,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(
-                $"书架更新失败：{exception.Message}",
+            ConfirmationDialog.ShowAlert(
+                this,
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书架更新失败：{exception.Message}");
             return;
         }
 
@@ -584,12 +624,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(
+            ConfirmationDialog.ShowAlert(
                 this,
-                $"书籍重命名失败：{exception.Message}",
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书籍重命名失败：{exception.Message}");
             return;
         }
 
@@ -632,11 +670,10 @@ public partial class MainWindow : Window
                                           or UnauthorizedAccessException
                                           or BookContentLoadException)
         {
-            MessageBox.Show(
-                $"书籍打开失败：{exception.Message}",
+            ConfirmationDialog.ShowAlert(
+                this,
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书籍打开失败：{exception.Message}");
             _currentBookPath = null;
             return;
         }
@@ -651,11 +688,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(
-                $"书籍已打开，但书架数据保存失败：{exception.Message}",
+            ConfirmationDialog.ShowAlert(
+                this,
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"书籍已打开，但书架数据保存失败：{exception.Message}");
         }
     }
 
@@ -696,6 +732,182 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 为已有书籍记录刷新来源名称快照。
+    /// </summary>
+    /// <param name="source">当前书源。</param>
+    /// <returns>无。</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="source"/> 为 <see langword="null"/> 时抛出。</exception>
+    private void RefreshSourceNameSnapshot(OpdsSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        for (int index = 0; index < _shelfBooks.Count; index++)
+        {
+            if (_shelfBooks[index].OpdsSourceId == source.Id)
+            {
+                _shelfBooks[index] = _shelfBooks[index] with { SourceNameSnapshot = source.Name };
+            }
+        }
+
+        ShelfPageControl.SetBooks(_shelfBooks);
+    }
+    /// <summary>
+    /// 查找同书源同条目且文件仍存在的书架记录。
+    /// </summary>
+    /// <param name="source">目标书源。</param>
+    /// <param name="entry">目标 OPDS 条目。</param>
+    /// <returns>已有书籍；不存在时返回 <see langword="null"/>。</returns>
+    /// <exception cref="ArgumentNullException">任一参数为 <see langword="null"/> 时抛出。</exception>
+    /// <summary>
+    /// 在书源列表变化后刷新所有书架记录的来源名称快照。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void RefreshSourceSnapshots()
+    {
+        if (_opdsSources.Count == 0)
+        {
+            return;
+        }
+
+        bool changed = false;
+        for (int index = 0; index < _shelfBooks.Count; index++)
+        {
+            Guid? sourceId = _shelfBooks[index].OpdsSourceId;
+            if (sourceId is null)
+            {
+                continue;
+            }
+
+            OpdsSource? source = _opdsSources.FirstOrDefault(item => item.Id == sourceId);
+            if (source is not null && !string.Equals(_shelfBooks[index].SourceNameSnapshot, source.Name, StringComparison.Ordinal))
+            {
+                _shelfBooks[index] = _shelfBooks[index] with { SourceNameSnapshot = source.Name };
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            ShelfPageControl.SetBooks(_shelfBooks);
+        }
+    }
+    private ShelfBook? FindExistingOpdsBook(OpdsSource source, OpdsEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(entry);
+        return _shelfBooks.FirstOrDefault(book =>
+            book.OpdsSourceId == source.Id &&
+            string.Equals(book.OpdsBookId, entry.BookId, StringComparison.Ordinal) &&
+            File.Exists(book.FilePath));
+    }
+
+    /// <summary>
+    /// 将 OPDS 下载完成的书籍写入书架。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">包含书源、条目和文件路径的事件参数。</param>
+    /// <returns>无。</returns>
+    private async void OpdsPageControl_BookAdded(object? sender, OpdsBookAddedEventArgs e)
+    {
+        if (_shelfBooks.Any(book => book.OpdsSourceId == e.Source.Id &&
+                                    string.Equals(book.OpdsBookId, e.Entry.BookId, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        // 先更新内存与界面，再保存配置；若保存失败仍保留已下载书籍的可见记录。
+        _shelfBooks.Insert(0, new ShelfBook(
+            Path.GetFullPath(e.FilePath),
+            e.Entry.Title,
+            DateTimeOffset.Now,
+            DateTimeOffset.Now,
+            OpdsSourceId: e.Source.Id,
+            OpdsBookId: e.Entry.BookId,
+            SourceNameSnapshot: e.Source.Name));
+        ShelfPageControl.SetBooks(_shelfBooks);
+        try
+        {
+            await _bookShelfStore.SaveAsync(_shelfBooks);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ConfirmationDialog.ShowAlert(
+                this,
+                "BookRead",
+                $"书籍已下载，但书架数据保存失败：{exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 从设置页请求浏览指定书源。
+    /// </summary>
+    /// <param name="sender">发起事件的设置页面。</param>
+    /// <param name="e">包含目标书源的事件参数。</param>
+    /// <returns>无。</returns>
+    private void SettingsPageControl_OpdsBrowseRequested(object? sender, OpdsSettingsRequestedEventArgs e)
+    {
+        ShowOpdsBrowsePage();
+        OpdsPageControl.OpenSource(e.Source);
+    }
+
+    /// <summary>
+    /// 同步设置页中更新后的书源列表。
+    /// </summary>
+    /// <param name="sender">发起事件的设置页面。</param>
+    /// <param name="e">最新书源列表。</param>
+    /// <returns>无。</returns>
+    private void SettingsPageControl_OpdsSourcesChanged(object? sender, IReadOnlyList<OpdsSource> e)
+    {
+        _opdsSources = e.ToList();
+        RefreshSourceSnapshots();
+    }
+
+    /// <summary>
+    /// 响应 OPDS 浏览页返回书架请求。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void OpdsPageControl_BackToShelfRequested(object? sender, RoutedEventArgs e)
+    {
+        ShowShelfPage();
+    }
+
+    /// <summary>
+    /// 响应 OPDS 浏览页打开设置页请求。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void OpdsPageControl_SettingsRequested(object? sender, EventArgs e)
+    {
+        ShowSettingsPage();
+        SettingsPageControl.LoadOpdsSources();
+    }
+
+    /// <summary>
+    /// 显示 OPDS 浏览页并恢复其宽屏尺寸。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void ShowOpdsBrowsePage()
+    {
+        WindowState = WindowState.Normal;
+        MinWidth = 500;
+        MinHeight = 600;
+        Width = OpdsWindowWidth;
+        CenterWindowOnScreen();
+        ShelfPageControl.Visibility = Visibility.Collapsed;
+        ReaderPageControl.Visibility = Visibility.Collapsed;
+        SettingsPageControl.Visibility = Visibility.Collapsed;
+        OpdsPageControl.Visibility = Visibility.Visible;
+        _isOpdsPageVisible = true;
+        SetTitleBarVisible(true);
+        TitleBarControl.SetBackButtonVisible(false);
+        TitleBarControl.ClearBookInfo();
+        UpdateWindowFrameClip();
+        OpdsPageControl.LoadSources();
+    }
+
+    /// <summary>
     /// 显示书架页并恢复其紧凑窗口尺寸。
     /// </summary>
     /// <returns>无。</returns>
@@ -710,6 +922,8 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Visible;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Collapsed;
+        OpdsPageControl.Visibility = Visibility.Collapsed;
+        _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
         TitleBarControl.SetBackButtonVisible(false);
         TitleBarControl.ClearBookInfo();
@@ -732,6 +946,8 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Visible;
         SettingsPageControl.Visibility = Visibility.Collapsed;
+        OpdsPageControl.Visibility = Visibility.Collapsed;
+        _isOpdsPageVisible = false;
         SetTitleBarVisible(!ReaderPageControl.IsReaderBackgroundTransparent);
         TitleBarControl.SetBackButtonVisible(true);
         UpdateTitleBarReadingTitle();
@@ -754,6 +970,8 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Visible;
+        OpdsPageControl.Visibility = Visibility.Collapsed;
+        _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
         TitleBarControl.SetBackButtonVisible(false);
         TitleBarControl.ClearBookInfo();
@@ -837,6 +1055,12 @@ public partial class MainWindow : Window
     /// <returns>无。</returns>
     private void TitleBarControl_ShelfRequested(object sender, RoutedEventArgs e)
     {
+        if (_isOpdsPageVisible)
+        {
+            ShowOpdsBrowsePage();
+            return;
+        }
+
         ShowShelfPage();
     }
 
@@ -868,12 +1092,10 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(
+            ConfirmationDialog.ShowAlert(
                 this,
-                $"快捷键设置保存失败：{exception.Message}",
                 "BookRead",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                $"快捷键设置保存失败：{exception.Message}");
         }
     }
 

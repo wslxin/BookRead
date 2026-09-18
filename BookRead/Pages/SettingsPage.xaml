@@ -15,49 +15,6 @@
             <Setter Property="Margin" Value="0,0,0,8" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         </Style>
-        <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="CheckBoxRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="11,10">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="22" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border x:Name="CheckBoxBox" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="5" Background="{DynamicResource SurfaceBackground}" BorderBrush="{DynamicResource InputBorder}" BorderThickness="1.5">
-                                    <TextBlock x:Name="CheckMark" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{DynamicResource AppBackground}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
-                                </Border>
-                                <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentStringFormat="{TemplateBinding ContentStringFormat}" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CheckBoxBox" Property="Background" Value="{DynamicResource Accent}" />
-                                <Setter TargetName="CheckBoxBox" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="CheckBoxRoot" Property="Background" Value="{DynamicResource ButtonHover}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="CheckBoxRoot" Property="BorderBrush" Value="{DynamicResource Accent}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="CheckBoxRoot" Property="Background" Value="{DynamicResource AccentSurface}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="CheckBoxRoot" Property="Opacity" Value="0.5" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </UserControl.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
@@ -85,6 +42,12 @@
                             <TextBlock Text="显示" FontSize="14" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="OpdsTabButton" Tag="Opds" Style="{StaticResource SettingsNavigationButton}" Click="SettingsTab_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="16" Width="24" VerticalAlignment="Center" />
+                            <TextBlock Text="OPDS 书源" FontSize="14" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -98,7 +61,7 @@
             <TextBlock x:Name="SettingsSectionTitle" Text="快捷键" Foreground="{DynamicResource TextPrimary}" FontSize="26" FontWeight="SemiBold" />
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,18,8,0">
                 <Grid>
-                    <StackPanel x:Name="ShortcutSettingsPanel">
+                    <StackPanel x:Name="ShortcutSettingsPanel" Visibility="Collapsed">
                         <TextBlock Text="全局快捷键" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" />
                         <TextBlock Text="在所有页面中生效" Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="0,4,0,0" />
                         <Grid Margin="0,10,0,0">
@@ -134,9 +97,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-
-                            <TextBlock Text="下一页" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
-                            <TextBox x:Name="NextPageTextBox" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="NextPage" />
+                            <TextBlock Text="下一页" Grid.Row="0" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
+                            <TextBox x:Name="NextPageTextBox" Grid.Row="0" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="NextPage" />
                             <TextBlock Text="上一页" Grid.Row="1" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
                             <TextBox x:Name="PreviousPageTextBox" Grid.Row="1" Grid.Column="1" Height="38" Margin="0,0,0,10" Padding="9,0" IsReadOnly="True" PreviewKeyDown="ShortcutTextBox_PreviewKeyDown" Tag="PreviousPage" />
                             <TextBlock Text="下一章" Grid.Row="2" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,12,10" />
@@ -176,6 +138,50 @@
                                 <TextBlock Text="取消勾选后，点击关闭按钮将直接退出 BookRead" Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="0,4,0,0" />
                             </StackPanel>
                         </CheckBox>
+                    </StackPanel>
+                    <StackPanel x:Name="OpdsSettingsPanel" Visibility="Collapsed">
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="已添加的 OPDS 书源" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Height="32" Padding="10,0" Content="添加书源" Click="AddOpdsSource_Click" />
+                        </Grid>
+                        <ListBox
+                            x:Name="OpdsSourceList"
+                            MinHeight="180"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Url}" Foreground="{DynamicResource TextMuted}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Url}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Width="30" Height="30" Margin="6,0,0,0" Padding="0" Tag="{Binding}" ToolTip="编辑" Click="EditOpdsSource_Click">
+                                            <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{DynamicResource Accent}" />
+                                        </Button>
+                                        <Button Grid.Column="2" Width="30" Height="30" Margin="6,0,0,0" Padding="0" Tag="{Binding}" ToolTip="浏览" Click="BrowseOpdsSource_Click">
+                                            <TextBlock Text="&#xE8A9;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{DynamicResource Accent}" />
+                                        </Button>
+                                        <Button Grid.Column="3" Width="30" Height="30" Margin="6,0,0,0" Padding="0" Tag="{Binding}" ToolTip="删除" Click="DeleteOpdsSource_Click">
+                                            <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#F44336" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="书源新增、编辑和删除会立即保存。已下载书籍不会因删除书源而被删除。" Foreground="{DynamicResource TextMuted}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

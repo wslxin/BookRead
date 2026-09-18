@@ -1,16 +1,26 @@
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Security;
+using System.Text.Json;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using BookRead.Data;
+using BookRead.Dialogs;
 using BookRead.Models;
+using BookRead.Services;
 
 namespace BookRead.Pages;
 
 /// <summary>
-/// 设置页面，负责编辑应用的快捷键、界面显示和窗口行为配置并提交配置。
+/// 设置页面，负责编辑应用快捷键、显示配置和 OPDS 书源。
 /// </summary>
 public partial class SettingsPage : UserControl
 {
     private ShortcutSettings _editingSettings = ShortcutSettings.CreateDefault();
+    private readonly ObservableCollection<OpdsSource> _opdsSources = [];
+    private readonly OpdsSourceStore _opdsSourceStore = new();
 
     /// <summary>阅读页设置保存后触发。</summary>
     internal event EventHandler<ShortcutSettingsChangedEventArgs>? SettingsSaved;
@@ -18,14 +28,44 @@ public partial class SettingsPage : UserControl
     /// <summary>设置页请求返回上一页时触发。</summary>
     internal event RoutedEventHandler? BackRequested;
 
+    /// <summary>设置页请求浏览指定 OPDS 书源时触发。</summary>
+    internal event EventHandler<OpdsSettingsRequestedEventArgs>? OpdsBrowseRequested;
+
+    /// <summary>设置页中 OPDS 书源列表发生变化时触发。</summary>
+    internal event EventHandler<IReadOnlyList<OpdsSource>>? OpdsSourcesChanged;
+
     /// <summary>
     /// 初始化设置页面并载入默认阅读页配置显示值。
     /// </summary>
     public SettingsPage()
     {
         InitializeComponent();
-        SelectSettingsTab(showShortcuts: true);
+        SelectSettingsTab(SettingsTab.Shortcuts);
         UpdateShortcutTextBoxes();
+        OpdsSourceList.ItemsSource = _opdsSources;
+    }
+
+    /// <summary>
+    /// 更新设置页中所有快捷键文本框的显示内容。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void UpdateShortcutTextBoxes()
+    {
+        foreach ((TextBox textBox, ShortcutAction action) in GetShortcutTextBoxes())
+        {
+            textBox.Text = FormatBinding(_editingSettings.GetBinding(action));
+        }
+    }
+
+    /// <summary>
+    /// 取消当前修改并请求返回上一页。
+    /// </summary>
+    /// <param name="sender">触发取消操作的按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        RequestBack();
     }
 
     /// <summary>
@@ -38,10 +78,11 @@ public partial class SettingsPage : UserControl
     {
         ArgumentNullException.ThrowIfNull(settings);
         _editingSettings = settings.Clone();
-        SelectSettingsTab(showShortcuts: true);
+        SelectSettingsTab(SettingsTab.Shortcuts);
         ShowReaderToolbarCheckBox.IsChecked = _editingSettings.ShowReaderToolbar;
         MinimizeToTrayOnCloseCheckBox.IsChecked = _editingSettings.MinimizeToTrayOnClose;
         UpdateShortcutTextBoxes();
+        LoadOpdsSources();
     }
 
     /// <summary>
@@ -52,34 +93,58 @@ public partial class SettingsPage : UserControl
     /// <returns>无。</returns>
     private void SettingsTab_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button)
+        if (sender is not Button button || !Enum.TryParse(button.Tag?.ToString(), out SettingsTab tab))
         {
             return;
         }
 
-        bool showShortcuts = string.Equals(
-            button.Tag?.ToString(),
-            "Shortcuts",
-            StringComparison.Ordinal);
-        SelectSettingsTab(showShortcuts);
+        SelectSettingsTab(tab);
     }
 
     /// <summary>
     /// 更新左侧导航按钮的选中状态，并显示对应的设置面板。
     /// </summary>
-    /// <param name="showShortcuts">为 true 时显示快捷键面板，否则显示显示选项面板。</param>
+    /// <param name="tab">要显示的设置分区。</param>
     /// <returns>无。</returns>
-    private void SelectSettingsTab(bool showShortcuts)
+    private void SelectSettingsTab(SettingsTab tab)
     {
-        ShortcutSettingsPanel.Visibility = showShortcuts
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        DisplaySettingsPanel.Visibility = showShortcuts
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        SettingsSectionTitle.Text = showShortcuts ? "快捷键" : "显示";
-        UpdateSettingsNavigationButton(ShortcutTabButton, showShortcuts);
-        UpdateSettingsNavigationButton(DisplayTabButton, !showShortcuts);
+        ShortcutSettingsPanel.Visibility = tab == SettingsTab.Shortcuts ? Visibility.Visible : Visibility.Collapsed;
+        DisplaySettingsPanel.Visibility = tab == SettingsTab.Display ? Visibility.Visible : Visibility.Collapsed;
+        OpdsSettingsPanel.Visibility = tab == SettingsTab.Opds ? Visibility.Visible : Visibility.Collapsed;
+        SettingsSectionTitle.Text = tab switch
+        {
+            SettingsTab.Shortcuts => "快捷键",
+            SettingsTab.Display => "显示",
+            _ => "OPDS 书源"
+        };
+        UpdateSettingsNavigationButton(ShortcutTabButton, tab == SettingsTab.Shortcuts);
+        UpdateSettingsNavigationButton(DisplayTabButton, tab == SettingsTab.Display);
+        UpdateSettingsNavigationButton(OpdsTabButton, tab == SettingsTab.Opds);
+    }
+
+    /// <summary>
+    /// 从磁盘加载 OPDS 书源列表。
+    /// </summary>
+    /// <returns>无。</returns>
+    internal void LoadOpdsSources()
+    {
+        try
+        {
+            _opdsSources.Clear();
+            foreach (OpdsSource source in _opdsSourceStore.Load())
+            {
+                _opdsSources.Add(source);
+            }
+
+            OpdsSourcesChanged?.Invoke(this, _opdsSources.ToList());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            ConfirmationDialog.ShowAlert(
+                Window.GetWindow(this),
+                "BookRead",
+                $"OPDS 书源配置读取失败：{exception.Message}");
+        }
     }
 
     /// <summary>
@@ -139,17 +204,6 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
-    /// 取消当前修改并请求返回上一页。
-    /// </summary>
-    /// <param name="sender">触发取消操作的按钮。</param>
-    /// <param name="e">路由事件参数。</param>
-    /// <returns>无。</returns>
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        RequestBack();
-    }
-
-    /// <summary>
     /// 校验并提交当前应用设置修改。
     /// </summary>
     /// <param name="sender">触发保存操作的按钮。</param>
@@ -171,12 +225,10 @@ public partial class SettingsPage : UserControl
 
             if (usedBindings.TryGetValue(binding, out ShortcutAction existingAction))
             {
-                MessageBox.Show(
+                ConfirmationDialog.ShowAlert(
                     Window.GetWindow(this),
-                    $"“{GetActionName(existingAction)}”和“{GetActionName(action)}”不能使用相同快捷键。",
-                    "快捷键冲突",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                    "BookRead",
+                    $"“{GetActionName(action)}”与“{GetActionName(existingAction)}”使用了相同的快捷键。");
                 return;
             }
 
@@ -188,14 +240,179 @@ public partial class SettingsPage : UserControl
     }
 
     /// <summary>
-    /// 更新设置页中所有快捷键文本框的显示内容。
+    /// 请求添加新书源。
     /// </summary>
+    /// <param name="sender">触发请求的添加按钮。</param>
+    /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void UpdateShortcutTextBoxes()
+    private async void AddOpdsSource_Click(object sender, RoutedEventArgs e)
     {
-        foreach ((TextBox textBox, ShortcutAction action) in GetShortcutTextBoxes())
+        try
         {
-            textBox.Text = FormatBinding(_editingSettings.GetBinding(action));
+            OpdsSource? result = await OpdsSourceDialog.ShowForCreateAsync(Window.GetWindow(this));
+            if (result is null)
+            {
+                return;
+            }
+
+            await SaveOpdsSourceAsync(result, addToList: true);
+        }
+        catch (InvalidOperationException) when (Window.GetWindow(this) is null)
+        {
+            // 异步保存完成前设置页可能已关闭；书源已写入磁盘，无需再弹窗。
+        }
+        catch (Exception exception)
+        {
+            ConfirmationDialog.ShowAlert(
+                Window.GetWindow(this),
+                "BookRead",
+                $"OPDS 书源保存失败：{exception}");
+        }
+    }
+    /// <summary>
+    /// 请求编辑选中书源。
+    /// </summary>
+    /// <param name="sender">触发请求的编辑按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private async void EditOpdsSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: OpdsSource originalSource })
+        {
+            return;
+        }
+
+        // 使用副本编辑，用户取消时不影响列表与已保存配置。
+        OpdsSource editingCopy = new()
+        {
+            Id = originalSource.Id,
+            Name = originalSource.Name,
+            Url = originalSource.Url,
+            Username = originalSource.Username,
+            EncryptedPassword = originalSource.EncryptedPassword,
+            IgnoreCertificateErrors = originalSource.IgnoreCertificateErrors,
+            AddedAt = originalSource.AddedAt
+        };
+
+        try
+        {
+            OpdsSource? result = await OpdsSourceDialog.ShowForEditAsync(Window.GetWindow(this), editingCopy);
+            if (result is null)
+            {
+                return;
+            }
+
+            int index = _opdsSources.IndexOf(originalSource);
+            if (index < 0)
+            {
+                return;
+            }
+
+            _opdsSources[index] = result;
+            await SaveOpdsSourceAsync(result, addToList: false);
+        }
+        catch (InvalidOperationException) when (Window.GetWindow(this) is null)
+        {
+            // 异步保存完成前设置页可能已关闭；书源已写入磁盘，无需再弹窗。
+        }
+        catch (Exception exception)
+        {
+            ConfirmationDialog.ShowAlert(
+                Window.GetWindow(this),
+                "BookRead",
+                $"OPDS 书源保存失败：{exception.Message}");
+        }
+    }
+    /// <summary>
+    /// 请求浏览指定书源。
+    /// </summary>
+    /// <param name="sender">触发请求的浏览按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void BrowseOpdsSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: OpdsSource source })
+        {
+            OpdsBrowseRequested?.Invoke(this, new OpdsSettingsRequestedEventArgs(source));
+        }
+    }
+
+    /// <summary>
+    /// 请求删除指定书源；已下载书籍保留。
+    /// </summary>
+    /// <param name="sender">触发请求的删除按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private async void DeleteOpdsSource_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: OpdsSource source })
+        {
+            return;
+        }
+
+        ConfirmationDialogResult confirmed = ConfirmationDialog.ShowFor(
+            Window.GetWindow(this),
+            new ConfirmationDialogOptions(
+                "删除 OPDS 书源",
+                $"确定删除书源“{source.Name}”吗？",
+                "已下载到书架的书籍和本地文件会保留。",
+                ConfirmText: "删除",
+                IsDestructive: true));
+        if (confirmed == ConfirmationDialogResult.Cancel)
+        {
+            return;
+        }
+
+        _opdsSources.Remove(source);
+        await SaveOpdsSourcesAsync();
+        OpdsSourcesChanged?.Invoke(this, _opdsSources.ToList());
+    }
+
+    /// <summary>
+    /// 保存单个书源并刷新列表。
+    /// </summary>
+    /// <param name="source">要保存的书源。</param>
+    /// <param name="addToList">是否作为新书源插入列表。</param>
+    /// <returns>表示异步保存过程的任务。</returns>
+    private async Task SaveOpdsSourceAsync(OpdsSource source, bool addToList)
+    {
+        if (addToList)
+        {
+            _opdsSources.Add(source);
+        }
+
+        // 旧版本曾把新增书源重复写入列表；按 Id 去重后再排序，避免一个书源覆盖其他条目。
+        List<OpdsSource> sortedSources = _opdsSources
+            .GroupBy(item => item.Id)
+            .Select(group => group.First())
+            .OrderBy(item => item.Name, StringComparer.CurrentCulture)
+            .ToList();
+        _opdsSources.Clear();
+        foreach (OpdsSource sortedSource in sortedSources)
+        {
+            _opdsSources.Add(sortedSource);
+        }
+
+        await SaveOpdsSourcesAsync();
+        OpdsSourcesChanged?.Invoke(this, _opdsSources.ToList());
+    }
+
+    /// <summary>
+    /// 保存完整书源列表。
+    /// </summary>
+    /// <returns>表示异步保存过程的任务。</returns>
+    private async Task SaveOpdsSourcesAsync()
+    {
+        try
+        {
+            await _opdsSourceStore.SaveAsync(_opdsSources.ToList());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ConfirmationDialog.ShowAlert(
+                Window.GetWindow(this),
+                "BookRead",
+                $"OPDS 书源保存失败：{exception.Message}");
         }
     }
 
@@ -307,5 +524,18 @@ public partial class SettingsPage : UserControl
             ShortcutAction.ToggleChapter => "章节面板",
             _ => action.ToString()
         };
+    }
+
+    /// <summary>设置页面可显示的分区。</summary>
+    private enum SettingsTab
+    {
+        /// <summary>快捷键设置。</summary>
+        Shortcuts,
+
+        /// <summary>显示设置。</summary>
+        Display,
+
+        /// <summary>OPDS 书源设置。</summary>
+        Opds
     }
 }

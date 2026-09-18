@@ -4,7 +4,7 @@ BookRead 是一个基于 .NET 9 和 WPF 构建的 Windows 桌面阅读器，主�
 
 ## 主要功能
 
-- 导入 TXT、Markdown、HTML、EPUB 和 DOCX 文件并自动加入书架。
+- 导入 TXT、Markdown、EPUB 和 DOCX 文件并自动加入书架。
 - 打开、重命名、移除书架中的书籍。
 - 在文件资源管理器中定位书籍文件。
 - 自动提取文本、解析章节并分页显示。
@@ -25,7 +25,6 @@ BookRead 是一个基于 .NET 9 和 WPF 构建的 Windows 桌面阅读器，主�
 | --- | --- |
 | 纯文本 | `.txt`、`.text` |
 | Markdown | `.md`、`.markdown` |
-| 网页 | `.html`、`.htm` |
 | EPUB 电子书 | `.epub` |
 | Word 文档 | `.docx` |
 

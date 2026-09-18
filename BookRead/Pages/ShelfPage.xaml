@@ -2,8 +2,58 @@
     x:Class="BookRead.Pages.ShelfPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:pages="clr-namespace:BookRead.Pages"
     Background="{DynamicResource Panel}">
     <UserControl.Resources>
+        <pages:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
+        <!-- 菜单项悬浮时轻微亮起并放大，移出后平滑恢复，增强操作反馈。 -->
+        <Style x:Key="AddBookMenuItem" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform x:Name="MenuItemTransform" ScaleX="1" ScaleY="1" />
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ButtonHover}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                    <Trigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation
+                                    Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                    To="1.04"
+                                    Duration="0:0:0.16" />
+                                <DoubleAnimation
+                                    Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                    To="1.04"
+                                    Duration="0:0:0.16" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.EnterActions>
+                    <Trigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation
+                                    Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                    To="1"
+                                    Duration="0:0:0.18" />
+                                <DoubleAnimation
+                                    Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                    To="1"
+                                    Duration="0:0:0.18" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.ExitActions>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <!-- 使用 Hidden 预留操作区宽度，避免鼠标移入或移出时书籍信息发生横向跳动。 -->
         <Style
             x:Key="ShelfRowActionButton"
@@ -21,26 +71,85 @@
     </UserControl.Resources>
     <Border BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0">
         <DockPanel>
-            <StackPanel DockPanel.Dock="Bottom" Margin="16,10,16,18">
-                <Button Height="38" Background="{DynamicResource AccentSurface}" Foreground="{DynamicResource Accent}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="ImportBook_Click" RenderTransform="{x:Null}">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock Text="导入本地书籍" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <TextBlock
-                    Margin="0,7,0,0"
-                    HorizontalAlignment="Center"
-                    Foreground="{DynamicResource TextMuted}"
-                    FontSize="11"
-                    Text="支持 TXT、Markdown、HTML、EPUB、DOCX 格式" />
-            </StackPanel>
+                <Popup
+                    x:Name="AddBookPopup"
+                    PlacementTarget="{Binding ElementName=AddBookButton}"
+                    Placement="Bottom"
+                    HorizontalOffset="-150"
+                    VerticalOffset="4"
+                    StaysOpen="False"
+                    AllowsTransparency="True"
+                    PopupAnimation="Fade">
+                    <Border
+                        Margin="10"
+                        Padding="6"
+                        Background="{DynamicResource DialogBackground}"
+                        BorderBrush="{DynamicResource InputBorder}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <Border.Effect>
+                            <DropShadowEffect
+                                BlurRadius="18"
+                                ShadowDepth="5"
+                                Direction="270"
+                                Opacity="0.28"
+                                Color="#000000" />
+                        </Border.Effect>
+                        <StackPanel MinWidth="178">
+                            <Button
+                                Style="{StaticResource AddBookMenuItem}"
+                                Margin="0,0,0,3"
+                                Click="ImportLocal_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="导入本地书籍" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Style="{StaticResource AddBookMenuItem}"
+                                Click="BrowseOpds_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="浏览 OPDS 书源" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             <Grid Margin="8,22">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="我的书架" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="13,0,0,10" />
+                <Grid Margin="5,0,5,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Text="我的书架"
+                        Foreground="{DynamicResource TextMuted}"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center"
+                        Margin="8,0,0,0" />
+                    <Button
+                        x:Name="AddBookButton"
+                        Grid.Column="1"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        ToolTip="添加书籍"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="ImportMenu_Click">
+                        <TextBlock
+                            Text="&#xE710;"
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="15"
+                            Foreground="{DynamicResource Accent}" />
+                    </Button>
+                </Grid>
                 <ListBox
                     x:Name="BookList"
                     Grid.Row="1"
@@ -48,98 +157,104 @@
                     BorderThickness="0"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                     ScrollViewer.VerticalScrollBarVisibility="Auto">
-						
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Background="Transparent">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Button
-                                        Tag="{Binding}"
-                                        Padding="0"
-										Margin="0,0,8,0"
-                                        HorizontalContentAlignment="Stretch"
-                                        Click="OpenShelfBook_Click">
-                                        <StackPanel>
-                                            <TextBlock
-                                                Text="{Binding Title}"
-                                                Foreground="{DynamicResource TextPrimary}"
-                                                FontSize="14"
-                                                FontWeight="SemiBold"
-                                                TextTrimming="CharacterEllipsis" />
-                                            <TextBlock
-                                                Text="{Binding FilePath}"
-                                                Foreground="{DynamicResource TextMuted}"
-                                                FontSize="11"
-                                                Margin="0,5,0,0"
-                                                TextTrimming="CharacterEllipsis"
-                                                ToolTip="{Binding FilePath}" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button
-                                        Grid.Column="1"
-                                        Width="32"
-                                        Height="32"
-                                        Margin="8,0,0,0"
-                                        Padding="0"
-                                        Tag="{Binding}"
-                                        Style="{StaticResource ShelfRowActionButton}"
-                                        ToolTip="重命名"
-                                        Click="RenameShelfBook_Click">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Background="Transparent">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    Tag="{Binding}"
+                                    Padding="0"
+                                    Margin="0,0,8,0"
+                                    HorizontalContentAlignment="Stretch"
+                                    Click="OpenShelfBook_Click">
+                                    <StackPanel>
                                         <TextBlock
-                                            Text="&#xE70F;"
-                                            FontFamily="Segoe Fluent Icons"
+                                            Text="{Binding Title}"
+                                            Foreground="{DynamicResource TextPrimary}"
                                             FontSize="14"
-                                            Foreground="{DynamicResource Accent}" />
-                                    </Button>
-                                    <Button
-                                        Grid.Column="2"
-                                        Width="32"
-                                        Height="32"
-                                        Margin="8,0,0,0"
-                                        Padding="0"
-                                        Tag="{Binding}"
-                                        Style="{StaticResource ShelfRowActionButton}"
-                                        ToolTip="打开所在文件夹"
-                                        Click="OpenShelfBookLocation_Click">
+                                            FontWeight="SemiBold"
+                                            TextTrimming="CharacterEllipsis" />
                                         <TextBlock
-                                            Text="&#xE8B7;"
-                                            FontFamily="Segoe Fluent Icons"
-                                            FontSize="14"
-                                            Foreground="{DynamicResource Accent}" />
-                                    </Button>
-                                    <Button
-                                        Grid.Column="3"
-                                        Width="32"
-                                        Height="32"
-                                        Margin="8,0,0,0"
-                                        Padding="0"
-                                        Tag="{Binding}"
-                                        ToolTip="从书架移除"
-                                        Click="RemoveShelfBook_Click">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource ShelfRowActionButton}">
-                                                <Setter Property="Foreground" Value="#F44336" />
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Foreground" Value="#F44336" />
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
+                                            Text="{Binding SourceLabel}"
+                                            Foreground="{DynamicResource TextMuted}"
+                                            FontSize="11"
+                                            Margin="0,5,0,0"
+                                            TextTrimming="CharacterEllipsis"
+                                            Visibility="{Binding SourceLabel, Converter={StaticResource StringToVisibilityConverter}, ConverterParameter=hide}" />
                                         <TextBlock
-                                            Text="&#xE74D;"
-                                            FontFamily="Segoe Fluent Icons"
-                                            FontSize="14"
-                                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
-                                    </Button>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
+                                            Text="{Binding FilePath}"
+                                            Foreground="{DynamicResource TextMuted}"
+                                            FontSize="11"
+                                            Margin="0,5,0,0"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTip="{Binding FilePath}" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Grid.Column="1"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="8,0,0,0"
+                                    Padding="0"
+                                    Tag="{Binding}"
+                                    Style="{StaticResource ShelfRowActionButton}"
+                                    ToolTip="重命名"
+                                    Click="RenameShelfBook_Click">
+                                    <TextBlock
+                                        Text="&#xE70F;"
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="14"
+                                        Foreground="{DynamicResource Accent}" />
+                                </Button>
+                                <Button
+                                    Grid.Column="2"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="8,0,0,0"
+                                    Padding="0"
+                                    Tag="{Binding}"
+                                    Style="{StaticResource ShelfRowActionButton}"
+                                    ToolTip="打开所在文件夹"
+                                    Click="OpenShelfBookLocation_Click">
+                                    <TextBlock
+                                        Text="&#xE8B7;"
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="14"
+                                        Foreground="{DynamicResource Accent}" />
+                                </Button>
+                                <Button
+                                    Grid.Column="3"
+                                    Width="32"
+                                    Height="32"
+                                    Margin="8,0,0,0"
+                                    Padding="0"
+                                    Tag="{Binding}"
+                                    ToolTip="从书架移除"
+                                    Click="RemoveShelfBook_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource ShelfRowActionButton}">
+                                            <Setter Property="Foreground" Value="#F44336" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Foreground" Value="#F44336" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock
+                                        Text="&#xE74D;"
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="14"
+                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
         </DockPanel>
