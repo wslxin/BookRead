@@ -25,6 +25,9 @@ internal sealed class CoverImageCache
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         string applicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         _cacheDirectory = Path.Combine(applicationData, "BookRead", "covers");
+
+        // 初始化时先建目录，便于尽早发现权限问题，并保证首次下载可直接写入缓存。
+        Directory.CreateDirectory(_cacheDirectory);
     }
 
     /// <summary>
@@ -90,6 +93,9 @@ internal sealed class CoverImageCache
             {
                 return null;
             }
+
+            // 缓存目录可能随应用数据清理而消失，写入前必须重建，否则所有封面都会保存失败。
+            Directory.CreateDirectory(_cacheDirectory);
 
             // 先写临时文件再替换，避免并发读取时把半张图片当作有效缓存。
             string temporaryPath = filePath + ".tmp";

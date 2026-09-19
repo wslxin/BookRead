@@ -152,7 +152,7 @@ internal sealed class OpdsClient
             XElement? atomUrl = document.Descendants()
                 .FirstOrDefault(element =>
                     element.Name.LocalName == "Url" &&
-                    string.Equals((string?)element.Attribute("type"), "application/atom+xml", StringComparison.OrdinalIgnoreCase));
+                    IsAtomResultType((string?)element.Attribute("type")));
             string? template = atomUrl?.Attribute("template")?.Value;
             return string.IsNullOrWhiteSpace(template) ? null : ResolveUrl(responseBaseUriFor(source, searchDescriptionUrl), template).ToString();
         }
@@ -160,6 +160,18 @@ internal sealed class OpdsClient
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// 判断 OpenSearch 结果地址的媒体类型是否为 Atom 结果类型。
+    /// </summary>
+    /// <param name="mediaType">OpenSearch Url 元素的 type 属性。</param>
+    /// <returns>基础类型为 <c>application/atom+xml</c> 时返回 true，否则返回 false。</returns>
+    private static bool IsAtomResultType(string? mediaType)
+    {
+        // Kavita 等 OPDS 服务会附加 profile 和 kind 参数；识别基础类型才能保持搜索兼容。
+        string baseMediaType = (mediaType ?? string.Empty).Split(';', StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
+        return string.Equals(baseMediaType, "application/atom+xml", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -251,9 +263,16 @@ internal sealed class OpdsClient
 
         string title = feed.Elements()
             .FirstOrDefault(element => element.Name.LocalName == "title")?.Value.Trim() ?? "OPDS 目录";
-        string? nextPageUrl = feed.Elements()
+        var pageLinks = feed.Elements()
             .Where(element => element.Name.LocalName == "link")
             .Select(element => CreateLink(element, baseUri))
+            .ToList();
+        string? previousPageUrl = pageLinks
+            .FirstOrDefault(link =>
+                string.Equals(link.Relation, "previous", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(link.Relation, "prev", StringComparison.OrdinalIgnoreCase))
+            ?.Href;
+        string? nextPageUrl = pageLinks
             .FirstOrDefault(link => string.Equals(link.Relation, "next", StringComparison.OrdinalIgnoreCase))
             ?.Href;
         string? searchDescriptionUrl = feed.Elements()
@@ -275,7 +294,7 @@ internal sealed class OpdsClient
             }
         }
 
-        return new OpdsPage(title, entries, nextPageUrl, searchTemplateUrl);
+        return new OpdsPage(title, entries, previousPageUrl, nextPageUrl, searchTemplateUrl);
     }
 
     /// <summary>

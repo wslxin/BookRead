@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Net.Http;
@@ -20,12 +21,15 @@ public partial class OpdsBrowsePage : UserControl
     private readonly OpdsSourceStore _sourceStore = new();
     private readonly OpdsClient _opdsClient;
     private readonly CoverImageCache _coverCache;
+    private readonly HttpClient _httpClient;
     private readonly List<OpdsSource> _sources = [];
     private readonly List<string?> _navigationHistory = [];
     private readonly ObservableCollection<OpdsEntryViewModel> _entries = [];
     private OpdsSource? _selectedSource;
     private string? _currentPageUrl;
+    private string? _previousPageUrl;
     private string? _nextPageUrl;
+    private int _currentPageNumber = 1;
     private string? _searchTemplateUrl;
     private string? _searchUrl;
     private bool _isNavigating;
@@ -55,9 +59,9 @@ public partial class OpdsBrowsePage : UserControl
     {
         InitializeComponent();
         EntryList.ItemsSource = _entries;
-        using var httpClient = OpdsDownloadService.CreateHttpClient();
-        _opdsClient = new OpdsClient(httpClient);
-        _coverCache = new CoverImageCache(httpClient);
+        _httpClient = OpdsDownloadService.CreateHttpClient();
+        _opdsClient = new OpdsClient(_httpClient);
+        _coverCache = new CoverImageCache(_httpClient);
     }
 
     /// <summary>
@@ -143,6 +147,7 @@ public partial class OpdsBrowsePage : UserControl
     {
         _navigationHistory.Clear();
         _currentPageUrl = null;
+        _currentPageNumber = 1;
         _searchUrl = null;
         RefreshBackLevelState();
         SearchBackButton.Visibility = Visibility.Collapsed;
@@ -154,7 +159,7 @@ public partial class OpdsBrowsePage : UserControl
     /// <returns>无。</returns>
     internal void Refresh()
     {
-        _ = LoadPageAsync(_currentPageUrl, append: false);
+        _ = LoadPageAsync(_currentPageUrl, preserveHistory: false);
     }
 
     /// <summary>
@@ -199,16 +204,16 @@ public partial class OpdsBrowsePage : UserControl
     }
 
     /// <summary>
-    /// 加载并渲染当前页面，可选择追加分页结果。
+    /// 加载并渲染当前 OPDS 页面。
     /// </summary>
     /// <param name="url">目标目录地址；为空时使用当前书源根地址。</param>
-    /// <param name="append">是否保留现有条目并追加结果。</param>
     /// <param name="preserveHistory">是否保留当前导航历史；返回上一级时为 false。</param>
+    /// <param name="pageStep">分页方向步进；下一页为 1，上一页为 -1，普通导航为 0。</param>
     /// <returns>表示异步加载过程的任务。</returns>
     private async Task LoadPageAsync(
         string? url,
-        bool append = false,
-        bool preserveHistory = true)
+        bool preserveHistory = true,
+        int pageStep = 0)
     {
         if (_selectedSource is null || _isNavigating)
         {
@@ -216,34 +221,46 @@ public partial class OpdsBrowsePage : UserControl
         }
 
         _isNavigating = true;
-        LoadMoreButton.Visibility = Visibility.Collapsed;
+        PaginationBar.Visibility = Visibility.Collapsed;
         StatusText.Visibility = Visibility.Collapsed;
-        if (!append)
         {
             EntryList.ItemsSource = null;
             _entries.Clear();
             EntryList.ItemsSource = _entries;
             StatusText.Text = "正在加载 OPDS 目录…";
             StatusText.Visibility = Visibility.Visible;
+            _previousPageUrl = null;
+            _nextPageUrl = null;
+
+            int? requestedPageNumber = GetPageNumberFromUrl(url);
+            if (requestedPageNumber.HasValue)
+            {
+                _currentPageNumber = requestedPageNumber.Value;
+            }
+            else if (pageStep != 0)
+            {
+                _currentPageNumber = Math.Max(1, _currentPageNumber + pageStep);
+            }
+            else if (!string.Equals(url, _currentPageUrl, StringComparison.Ordinal))
+            {
+                _currentPageNumber = 1;
+            }
         }
 
         try
         {
             OpdsPage page = await _opdsClient.LoadPageAsync(_selectedSource, url);
             string? searchTemplate = page.SearchTemplateUrl ?? _searchTemplateUrl;
-            if (!append)
-            {
-                _searchTemplateUrl = searchTemplate;
-                bool hasSearch = !string.IsNullOrWhiteSpace(searchTemplate);
-                SearchTextBox.IsEnabled = hasSearch;
-            }
+            _searchTemplateUrl = searchTemplate;
+            bool hasSearch = !string.IsNullOrWhiteSpace(searchTemplate);
+            SearchTextBox.IsEnabled = hasSearch;
 
             foreach (OpdsEntry entry in page.Entries)
             {
                 _entries.Add(new OpdsEntryViewModel(entry));
             }
 
-            _ = LoadVisibleCoversAsync();
+            _ = LoadCoversAsync();
             _nextPageUrl = page.NextPageUrl;
             SetPageTitle(page.Title);
             StatusText.Visibility = Visibility.Collapsed;
@@ -253,7 +270,7 @@ public partial class OpdsBrowsePage : UserControl
                 StatusText.Visibility = Visibility.Visible;
             }
 
-            if (!append && preserveHistory)
+            if (preserveHistory)
             {
                 // 根目录地址为 null，也必须入栈，否则从根目录进入子目录后无法返回上一级。
                 if (!string.Equals(_currentPageUrl, url, StringComparison.Ordinal))
@@ -263,18 +280,13 @@ public partial class OpdsBrowsePage : UserControl
             }
 
             _currentPageUrl = url;
+            _previousPageUrl = page.PreviousPageUrl;
+            _nextPageUrl = page.NextPageUrl;
             RefreshBackLevelState();
-            LoadMoreButton.Visibility = string.IsNullOrWhiteSpace(_nextPageUrl)
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            UpdatePagination();
         }
         catch (Exception exception) when (exception is OpdsClientException or HttpRequestException or TaskCanceledException)
         {
-            if (!append)
-            {
-                EntryList.ItemsSource = null;
-            }
-
             StatusText.Text = $"加载失败：{exception.Message}";
             StatusText.Visibility = Visibility.Visible;
             SetPageTitle(_selectedSource?.Name ?? CurrentPageTitle);
@@ -312,14 +324,81 @@ public partial class OpdsBrowsePage : UserControl
     }
 
     /// <summary>
-    /// 加载下一页并追加条目。
+    /// 更新底部分页栏的可见性、按钮状态和页码。
     /// </summary>
-    /// <param name="sender">触发请求的加载更多按钮。</param>
+    /// <returns>无。</returns>
+    private void UpdatePagination()
+    {
+        bool hasPagination = _previousPageUrl is not null || _nextPageUrl is not null;
+        PaginationBar.Visibility = hasPagination ? Visibility.Visible : Visibility.Collapsed;
+        PreviousPageButton.IsEnabled = _previousPageUrl is not null;
+        NextPageButton.IsEnabled = _nextPageUrl is not null;
+        PaginationText.Text = $"第 {_currentPageNumber} 页";
+    }
+
+    /// <summary>
+    /// 响应上一页请求并替换当前列表。
+    /// </summary>
+    /// <param name="sender">触发请求的上一页按钮。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
-    private void LoadMore_Click(object sender, RoutedEventArgs e)
+    private void PreviousPage_Click(object sender, RoutedEventArgs e)
     {
-        _ = LoadPageAsync(_nextPageUrl, append: true);
+        if (_previousPageUrl is not null)
+        {
+            _ = LoadPageAsync(_previousPageUrl, preserveHistory: false, pageStep: -1);
+        }
+    }
+
+    /// <summary>
+    /// 响应下一页请求并替换当前列表。
+    /// </summary>
+    /// <param name="sender">触发请求的下一页按钮。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void NextPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_nextPageUrl is not null)
+        {
+            _ = LoadPageAsync(_nextPageUrl, preserveHistory: false, pageStep: 1);
+        }
+    }
+
+    /// <summary>
+    /// 从 OPDS 分页地址中读取页码。
+    /// </summary>
+    /// <param name="url">分页地址。</param>
+    /// <returns>有效页码；地址未提供页码时返回 <see langword="null"/>。</returns>
+    private static int? GetPageNumberFromUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? requestUri))
+        {
+            return null;
+        }
+
+        string query = requestUri.Query.TrimStart('?');
+        foreach (string parameter in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int separatorIndex = parameter.IndexOf('=');
+            if (separatorIndex < 0)
+            {
+                continue;
+            }
+
+            string name = Uri.UnescapeDataString(parameter[..separatorIndex]);
+            if (!string.Equals(name, "pageNumber", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string value = Uri.UnescapeDataString(parameter[(separatorIndex + 1)..]);
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int pageNumber) && pageNumber > 0)
+            {
+                return pageNumber;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -404,31 +483,26 @@ public partial class OpdsBrowsePage : UserControl
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
     /// <summary>
-    /// 异步加载当前可见条目的封面；加载失败时保留占位图标。
+    /// 异步加载条目封面；单个封面加载失败时保留占位图标。
     /// </summary>
     /// <returns>表示异步加载过程的任务。</returns>
-    private async Task LoadVisibleCoversAsync()
+    private async Task LoadCoversAsync()
     {
-        foreach (var item in EntryList.Items.OfType<OpdsEntryViewModel>().ToList())
+        foreach (var item in EntryList.Items.OfType<OpdsEntryViewModel>())
         {
             if (string.IsNullOrWhiteSpace(item.Entry.CoverThumbnailUrl))
             {
                 continue;
             }
 
-            if (EntryList.ItemContainerGenerator.ContainerFromItem(item) is not ContentPresenter container)
+            try
             {
-                continue;
-            }
+                byte[]? bytes = await _coverCache.GetImageAsync(item.Entry.CoverThumbnailUrl!);
+                if (bytes is null)
+                {
+                    continue;
+                }
 
-            if (FindVisualChild<Image>(container) is not Image image)
-            {
-                continue;
-            }
-
-            byte[]? bytes = await _coverCache.GetImageAsync(item.Entry.CoverThumbnailUrl!);
-            if (bytes is not null)
-            {
                 using var stream = new MemoryStream(bytes);
                 var bitmap = new System.Windows.Media.Imaging.BitmapImage();
                 bitmap.BeginInit();
@@ -436,45 +510,22 @@ public partial class OpdsBrowsePage : UserControl
                 bitmap.StreamSource = stream;
                 bitmap.EndInit();
                 bitmap.Freeze();
-                image.Source = bitmap;
+                item.SetCoverImage(bitmap);
+            }
+            catch (Exception)
+            {
+                // 封面属于增强展示内容；单个图片下载或解码失败时继续加载其他封面。
             }
         }
     }
 
     /// <summary>
-    /// 在视觉树中查找指定类型的子元素。
-    /// </summary>
-    /// <typeparam name="T">要查找的元素类型。</typeparam>
-    /// <param name="parent">要搜索的父元素。</param>
-    /// <returns>第一个匹配的元素；不存在时返回 <see langword="null"/>。</returns>
-    private static T? FindVisualChild<T>(DependencyObject parent)
-        where T : DependencyObject
-    {
-        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent);
-        for (int index = 0; index < count; index++)
-        {
-            DependencyObject child = System.Windows.Media.VisualTreeHelper.GetChild(parent, index);
-            if (child is T match)
-            {
-                return match;
-            }
-
-            T? result = FindVisualChild<T>(child);
-            if (result is not null)
-            {
-                return result;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    private void EntryButton_Click(object sender, RoutedEventArgs e)
+    /// 处理条目点击：导航条目进入子目录，下载条目复用已有文件或请求下载。
     /// </summary>
     /// <param name="sender">触发请求的条目按钮。</param>
     /// <param name="e">路由事件参数。</param>
     /// <returns>无。</returns>
+    private void EntryButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: OpdsEntryViewModel viewModel })
         {

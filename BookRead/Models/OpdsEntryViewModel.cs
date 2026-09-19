@@ -1,10 +1,15 @@
+using System.ComponentModel;
+using System.Windows.Media;
+
 namespace BookRead.Models;
 
 /// <summary>
 /// 为浏览页中单个 OPDS 条目的显示和下载状态提供可更新数据。
 /// </summary>
-internal sealed class OpdsEntryViewModel
+internal sealed class OpdsEntryViewModel : INotifyPropertyChanged
 {
+    private ImageSource? _coverImage;
+
     /// <summary>创建 OPDS 条目视图模型。</summary>
     /// <param name="entry">要显示的条目。</param>
     /// <exception cref="ArgumentNullException"><paramref name="entry"/> 为 <see langword="null"/> 时抛出。</exception>
@@ -15,6 +20,12 @@ internal sealed class OpdsEntryViewModel
 
     /// <summary>获取底层 OPDS 条目数据。</summary>
     public OpdsEntry Entry { get; }
+
+    /// <summary>获取卡片封面；尚未加载完成时为 <see langword="null"/>。</summary>
+    public ImageSource? CoverImage => _coverImage;
+
+    /// <inheritdoc />
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>获取条目在界面中的稳定标识。</summary>
     public string Key => $"{Entry.BookId}|{Entry.Title}|{Entry.NavigationUrl ?? Entry.Acquisitions.FirstOrDefault()?.Href ?? string.Empty}";
@@ -36,4 +47,26 @@ internal sealed class OpdsEntryViewModel
 
     /// <summary>获取条目作者；缺少作者信息或为目录条目时返回空字符串。</summary>
     public string Subtitle => Entry.Author ?? string.Empty;
+
+    /// <summary>更新卡片封面并通知界面刷新。</summary>
+    /// <param name="coverImage">已加载的封面图像。</param>
+    /// <returns>无。</returns>
+    internal void SetCoverImage(ImageSource? coverImage)
+    {
+        if (ReferenceEquals(_coverImage, coverImage))
+        {
+            return;
+        }
+
+        _coverImage = coverImage;
+        OnPropertyChanged(nameof(CoverImage));
+    }
+
+    /// <summary>触发指定属性的界面更新。</summary>
+    /// <param name="propertyName">发生变化的属性名称。</param>
+    /// <returns>无。</returns>
+    private void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }
