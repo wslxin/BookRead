@@ -13,6 +13,7 @@
     <SolidColorBrush x:Key="ListSelected" Color="#2B2A27" />
     <SolidColorBrush x:Key="ListHover" Color="#252B30" />
     <SolidColorBrush x:Key="InputBorder" Color="#343A40" />
+    <SolidColorBrush x:Key="InputBorderHover" Color="#565E66" />
     <SolidColorBrush x:Key="DialogBackground" Color="#1B1E21" />
     <SolidColorBrush x:Key="DangerSurface" Color="#382326" />
     <SolidColorBrush x:Key="Muted" Color="#8F969D" />
@@ -94,15 +95,24 @@
             </Setter.Value>
         </Setter>
         <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
                 <Setter Property="Background" Value="{DynamicResource ButtonHover}" />
-            </Trigger>
+            </MultiTrigger>
             <Trigger Property="IsPressed" Value="True">
                 <Setter Property="RenderTransform">
                     <Setter.Value>
                         <ScaleTransform ScaleX="0.99" ScaleY="0.99" />
                     </Setter.Value>
                 </Setter>
+            </Trigger>
+            <!-- 禁用按钮在深色主题下与可用状态外观一致，降低不透明度便于用户识别不可点击。 -->
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.55" />
+                <Setter Property="Cursor" Value="Arrow" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -168,8 +178,19 @@
             </Setter.Value>
         </Setter>
         <Style.Triggers>
+            <MultiTrigger>
+                <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True" />
+                    <Condition Property="IsEnabled" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter Property="BorderBrush" Value="{DynamicResource InputBorderHover}" />
+            </MultiTrigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter Property="BorderBrush" Value="#7AB4F8" />
+            </Trigger>
+            <!-- 禁用输入框在深色主题下与可用状态外观一致，降低不透明度便于用户识别不可输入。 -->
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.55" />
             </Trigger>
         </Style.Triggers>
     </Style>

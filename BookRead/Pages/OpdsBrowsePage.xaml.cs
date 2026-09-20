@@ -6,6 +6,9 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using BookRead.Controls;
 using BookRead.Data;
 using BookRead.Dialogs;
 using BookRead.Models;
@@ -31,9 +34,32 @@ public partial class OpdsBrowsePage : UserControl
     private string? _nextPageUrl;
     private int _currentPageNumber = 1;
     private string? _searchTemplateUrl;
-    private string? _searchUrl;
     private bool _isNavigating;
     private readonly Dictionary<string, CancellationTokenSource> _downloadCancellations = new(StringComparer.Ordinal);
+
+    /// <summary>Segoe Fluent Icons 中“书库”字形，用于没有书源的空状态提示。</summary>
+    private const string LibraryIcon = "\uE8F1";
+
+    /// <summary>Segoe Fluent Icons 中“同步”字形，用于目录加载中提示。</summary>
+    private const string LoadingIcon = "\uE895";
+
+    /// <summary>Segoe Fluent Icons 中“文件夹”字形，用于目录无条目提示。</summary>
+    private const string FolderIcon = "\uE8B7";
+
+    /// <summary>Segoe Fluent Icons 中“错误徽章”字形，用于加载失败提示。</summary>
+    private const string ErrorIcon = "\uE783";
+
+    /// <summary>加载图标旋转一圈所需时长。</summary>
+    private static readonly TimeSpan LoadingIconSpinDuration = TimeSpan.FromSeconds(1.1);
+
+    /// <summary>下载完成通知的停留时长，需保证用户能读完结果。</summary>
+    private static readonly TimeSpan DownloadCompletedNoticeDuration = TimeSpan.FromSeconds(3.5);
+
+    /// <summary>下载失败通知的停留时长，长于成功提示以便用户看清失败原因。</summary>
+    private static readonly TimeSpan DownloadFailureNoticeDuration = TimeSpan.FromSeconds(5);
+
+    /// <summary>“已在书架中”提示的停留时长，短于下载完成提示。</summary>
+    private static readonly TimeSpan ExistingBookNoticeDuration = TimeSpan.FromSeconds(2.2);
 
     /// <summary>浏览页标题变化时触发，事件参数为最新标题。</summary>
     internal event EventHandler<string>? PageTitleChanged;
@@ -49,6 +75,12 @@ public partial class OpdsBrowsePage : UserControl
 
     /// <summary>浏览页完成下载并请求将书籍加入书架时触发。</summary>
     internal event EventHandler<OpdsBookAddedEventArgs>? BookAdded;
+
+    /// <summary>创建新的下载任务时触发，供主窗口在下载详情页中跨页面展示该任务。</summary>
+    internal event EventHandler<OpdsDownloadTask>? DownloadTaskCreated;
+
+    /// <summary>下载在浏览页不可见时结束时触发，供主窗口跨页面提示下载结果。</summary>
+    internal event EventHandler<OpdsDownloadFinishedEventArgs>? DownloadFinished;
 
     internal Func<OpdsSource, OpdsEntry, ShelfBook?> FindExistingOpdsBook = (_, _) => null;
 
@@ -99,9 +131,10 @@ public partial class OpdsBrowsePage : UserControl
 
         if (_selectedSource is null)
         {
-            StatusText.Text = "还没有 OPDS 书源。请打开设置页添加一个书源。";
-            StatusText.Visibility = Visibility.Visible;
+            ShowEmptyState(LibraryIcon, "还没有 OPDS 书源。请打开设置页添加一个书源。");
             EntryList.ItemsSource = null;
+            SearchTextBox.IsEnabled = false;
+            SearchButton.IsEnabled = false;
             SetPageTitle("OPDS 书源");
             return;
         }
@@ -148,9 +181,64 @@ public partial class OpdsBrowsePage : UserControl
         _navigationHistory.Clear();
         _currentPageUrl = null;
         _currentPageNumber = 1;
-        _searchUrl = null;
         RefreshBackLevelState();
-        SearchBackButton.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 显示居中的空状态提示，用于没有书源、正在加载、目录为空或加载失败等列表无内容的场景。
+    /// </summary>
+    /// <param name="icon">Segoe Fluent Icons 字体中的图标字形。</param>
+    /// <param name="text">提示正文，宽度不足时自动换行。</param>
+    /// <param name="animateIcon">为 <see langword="true"/> 时让图标持续旋转，用于加载中提示。</param>
+    /// <returns>无。</returns>
+    private void ShowEmptyState(string icon, string text, bool animateIcon = false)
+    {
+        EmptyStateIcon.Text = icon;
+        EmptyStateText.Text = text;
+        EmptyStatePanel.Visibility = Visibility.Visible;
+        if (animateIcon)
+        {
+            StartLoadingAnimation();
+        }
+        else
+        {
+            StopLoadingAnimation();
+        }
+    }
+
+    /// <summary>
+    /// 隐藏居中的空状态提示。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void HideEmptyState()
+    {
+        StopLoadingAnimation();
+        EmptyStatePanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 启动加载图标的循环旋转动画。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void StartLoadingAnimation()
+    {
+        var spinAnimation = new DoubleAnimation
+        {
+            From = 0,
+            To = 360,
+            Duration = new Duration(LoadingIconSpinDuration),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        EmptyStateIconRotation.BeginAnimation(RotateTransform.AngleProperty, spinAnimation);
+    }
+
+    /// <summary>
+    /// 停止加载图标的旋转动画，使图标恢复静止角度。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void StopLoadingAnimation()
+    {
+        EmptyStateIconRotation.BeginAnimation(RotateTransform.AngleProperty, null);
     }
 
     /// <summary>
@@ -197,8 +285,6 @@ public partial class OpdsBrowsePage : UserControl
 
         string? previousUrl = _navigationHistory[^1];
         _navigationHistory.RemoveAt(_navigationHistory.Count - 1);
-        _searchUrl = null;
-        SearchBackButton.Visibility = Visibility.Collapsed;
         _currentPageUrl = previousUrl;
         _ = LoadPageAsync(previousUrl, preserveHistory: false);
     }
@@ -222,13 +308,12 @@ public partial class OpdsBrowsePage : UserControl
 
         _isNavigating = true;
         PaginationBar.Visibility = Visibility.Collapsed;
-        StatusText.Visibility = Visibility.Collapsed;
+        HideEmptyState();
         {
             EntryList.ItemsSource = null;
             _entries.Clear();
             EntryList.ItemsSource = _entries;
-            StatusText.Text = "正在加载 OPDS 目录…";
-            StatusText.Visibility = Visibility.Visible;
+            ShowEmptyState(LoadingIcon, "正在加载 OPDS 目录…", animateIcon: true);
             _previousPageUrl = null;
             _nextPageUrl = null;
 
@@ -254,6 +339,7 @@ public partial class OpdsBrowsePage : UserControl
             _searchTemplateUrl = searchTemplate;
             bool hasSearch = !string.IsNullOrWhiteSpace(searchTemplate);
             SearchTextBox.IsEnabled = hasSearch;
+            SearchButton.IsEnabled = hasSearch;
 
             foreach (OpdsEntry entry in page.Entries)
             {
@@ -263,11 +349,10 @@ public partial class OpdsBrowsePage : UserControl
             _ = LoadCoversAsync();
             _nextPageUrl = page.NextPageUrl;
             SetPageTitle(page.Title);
-            StatusText.Visibility = Visibility.Collapsed;
+            HideEmptyState();
             if (_entries.Count == 0)
             {
-                StatusText.Text = "当前目录没有条目。";
-                StatusText.Visibility = Visibility.Visible;
+                ShowEmptyState(FolderIcon, "当前目录没有条目。");
             }
 
             if (preserveHistory)
@@ -287,14 +372,14 @@ public partial class OpdsBrowsePage : UserControl
         }
         catch (Exception exception) when (exception is OpdsClientException or HttpRequestException or TaskCanceledException)
         {
-            StatusText.Text = $"加载失败：{exception.Message}";
-            StatusText.Visibility = Visibility.Visible;
+            ShowEmptyState(ErrorIcon, $"加载失败：{exception.Message}");
             SetPageTitle(_selectedSource?.Name ?? CurrentPageTitle);
 
             // 加载失败时同步清空本页搜索模板，避免沿用上一本书源的搜索能力造成误导。
             _nextPageUrl = null;
             _searchTemplateUrl = null;
             SearchTextBox.IsEnabled = false;
+            SearchButton.IsEnabled = false;
         }
         finally
         {
@@ -435,45 +520,23 @@ public partial class OpdsBrowsePage : UserControl
     {
         if (_selectedSource is null || string.IsNullOrWhiteSpace(_searchTemplateUrl))
         {
+            PageNotification.Show("当前目录不支持搜索。", InlineNotificationType.Warning);
             return;
         }
 
         string query = SearchTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(query))
         {
+            // 空关键词时给出明确反馈，避免用户误以为搜索按钮失效。
+            PageNotification.Show("请输入要搜索的内容。", InlineNotificationType.Warning);
+            SearchTextBox.Focus();
             return;
         }
 
         // OpenSearch 模板使用 URL 编码后的 searchTerms，避免中文或特殊字符破坏请求。
         string encodedQuery = Uri.EscapeDataString(query);
         string searchUrl = _searchTemplateUrl.Replace("{searchTerms}", encodedQuery, StringComparison.OrdinalIgnoreCase);
-        _searchUrl = searchUrl;
-        SearchBackButton.Visibility = Visibility.Visible;
         _ = LoadPageAsync(searchUrl);
-    }
-
-    /// <summary>
-    /// 退出搜索结果并返回搜索前目录。
-    /// </summary>
-    /// <param name="sender">触发请求的退出搜索按钮。</param>
-    /// <param name="e">路由事件参数。</param>
-    /// <returns>无。</returns>
-    private void SearchBack_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_searchUrl))
-        {
-            return;
-        }
-
-        _searchUrl = null;
-        SearchBackButton.Visibility = Visibility.Collapsed;
-        string? targetUrl = _navigationHistory.Count > 0 ? _navigationHistory[^1] : null;
-        if (_navigationHistory.Count > 0)
-        {
-            _navigationHistory.RemoveAt(_navigationHistory.Count - 1);
-        }
-
-        _ = LoadPageAsync(targetUrl, preserveHistory: false);
     }
 
     /// <summary>
@@ -561,6 +624,12 @@ public partial class OpdsBrowsePage : UserControl
         ShelfBook? existingBook = FindExistingBook(_selectedSource, viewModel.Entry);
         if (existingBook is not null)
         {
+            // 本地文件已存在时不再重复下载，但必须给出反馈，否则用户会以为点击没有生效。
+            PageNotification.Show(
+                $"《{viewModel.Entry.Title}》已在书架中。",
+                InlineNotificationType.Info,
+                ExistingBookNoticeDuration);
+
             BookAdded?.Invoke(this, new OpdsBookAddedEventArgs(_selectedSource, viewModel.Entry, existingBook.FilePath));
             return;
         }
@@ -629,7 +698,6 @@ public partial class OpdsBrowsePage : UserControl
     }
 
     /// <summary>
-    /// <summary>
     /// 取消指定条目的下载任务。
     /// </summary>
     /// <param name="sender">触发取消的菜单项。</param>
@@ -647,19 +715,37 @@ public partial class OpdsBrowsePage : UserControl
             cancellationSource.Cancel();
         }
     }
+
+    /// <summary>
+    /// 下载指定条目并加入书架，结束后收起进行中的操作提示，避免残留状态误导用户。
+    /// </summary>
+    /// <param name="source">目标 OPDS 书源。</param>
+    /// <param name="viewModel">待下载条目的视图模型。</param>
+    /// <param name="link">条目的下载链接。</param>
+    /// <returns>表示异步下载过程的任务。</returns>
     private async Task DownloadAsync(OpdsSource source, OpdsEntryViewModel viewModel, OpdsLink link)
     {
         viewModel.IsDownloading = true;
-        StatusText.Text = string.Format("正在下载《{0}》…", viewModel.Entry.Title);
-        StatusText.Visibility = Visibility.Visible;
+
+        // 重置进度，避免复用视图模型时显示上一次下载的残留百分比。
+        viewModel.DownloadProgress = 0;
+
+        var cancellationTokenSource = new CancellationTokenSource();
+        _downloadCancellations[viewModel.Key] = cancellationTokenSource;
+
+        // 创建可供下载详情页展示的任务对象，并把取消能力交给详情页的取消按钮。
+        var downloadTask = new OpdsDownloadTask(viewModel.Entry.Title, source.Name)
+        {
+            CancelRequested = cancellationTokenSource.Cancel
+        };
+        DownloadTaskCreated?.Invoke(this, downloadTask);
 
         var progress = new Progress<OpdsDownloadState>(state =>
         {
             viewModel.DownloadProgress = state.ProgressPercent;
+            downloadTask.ReportProgress(state.ProgressPercent);
         });
 
-        var cancellationTokenSource = new CancellationTokenSource();
-        _downloadCancellations[viewModel.Key] = cancellationTokenSource;
         try
         {
             using var downloadService = new OpdsDownloadService(OpdsDownloadService.CreateHttpClient(source));
@@ -671,28 +757,64 @@ public partial class OpdsBrowsePage : UserControl
                 cancellationTokenSource.Token);
             viewModel.DownloadedFilePath = filePath;
             viewModel.IsDownloading = false;
-            ConfirmationDialog.ShowAlert(
-                Window.GetWindow(this),
-                "BookRead",
-                $"《{viewModel.Entry.Title}》已加入书架。");
+            downloadTask.MarkCompleted();
+
+            // 完成结果用可自动收起、不打断操作的通知呈现，替代原先需要点“确定”的模态弹窗。
+            ReportDownloadFinished(
+                $"《{viewModel.Entry.Title}》已加入书架。",
+                InlineNotificationType.Success,
+                DownloadCompletedNoticeDuration,
+                OpdsDownloadStatus.Completed);
+
             BookAdded?.Invoke(this, new OpdsBookAddedEventArgs(source, viewModel.Entry, filePath));
         }
         catch (OperationCanceledException)
         {
             viewModel.IsDownloading = false;
-            StatusText.Text = "下载已取消。";
+            downloadTask.MarkCanceled();
+
+            // 取消属于瞬时结果，改用可自动收起的通知，避免提示长期停留。
+            ReportDownloadFinished(
+                "下载已取消。",
+                InlineNotificationType.Info,
+                ExistingBookNoticeDuration,
+                OpdsDownloadStatus.Canceled);
         }
-        catch (Exception exception) when (exception is OpdsDownloadException or HttpRequestException or IOException or UnauthorizedAccessException)
+        catch (Exception exception)
         {
+            // 兜底处理全部失败情形：失败原因留在下载详情页中备查，同时用轻量提示即时告知。
             viewModel.IsDownloading = false;
-            ConfirmationDialog.ShowAlert(
-                Window.GetWindow(this),
-                "BookRead",
-                $"《{viewModel.Entry.Title}》下载失败：{exception.Message}");
+            downloadTask.MarkFailed(exception.Message);
+
+            ReportDownloadFinished(
+                $"《{viewModel.Entry.Title}》下载失败：{exception.Message}",
+                InlineNotificationType.Warning,
+                DownloadFailureNoticeDuration,
+                OpdsDownloadStatus.Failed);
         }
         finally
         {
             _downloadCancellations.Remove(viewModel.Key);
         }
+    }
+
+    /// <summary>
+    /// 报告单个下载的结束结果：浏览页可见时使用页面内提示，否则交由主窗口跨页面提示。
+    /// </summary>
+    /// <param name="message">要展示给用户的结果消息。</param>
+    /// <param name="type">结果对应的提示类型。</param>
+    /// <param name="noticeDuration">页面内提示的停留时长。</param>
+    /// <param name="status">下载结束时所处的状态，用于决定跨页面提示的呈现方式。</param>
+    /// <returns>无。</returns>
+    private void ReportDownloadFinished(string message, InlineNotificationType type, TimeSpan noticeDuration, OpdsDownloadStatus status)
+    {
+        // 页面隐藏后页面内提示会随页面一起不可见，此时改由主窗口在任意页面弹出提示。
+        if (IsVisible)
+        {
+            PageNotification.Show(message, type, noticeDuration);
+            return;
+        }
+
+        DownloadFinished?.Invoke(this, new OpdsDownloadFinishedEventArgs(message, status));
     }
 }

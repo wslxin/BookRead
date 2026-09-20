@@ -1,6 +1,8 @@
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.IO;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Windows;
@@ -11,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
+using BookRead.Controls;
 using BookRead.Dialogs;
 using BookRead.Models;
 using BookRead.Services;
@@ -39,6 +42,11 @@ public partial class MainWindow : Window
     private readonly OpdsSourceStore _opdsSourceStore = new();
     private bool _isOpdsPageVisible;
     private List<OpdsSource> _opdsSources = [];
+    private readonly ObservableCollection<OpdsDownloadTask> _activeDownloadTasks = [];
+    private readonly ObservableCollection<OpdsDownloadTask> _completedDownloadTasks = [];
+    private bool _downloadDetailOpenedFromReader;
+    private bool _downloadDetailOpenedFromOpds;
+    private bool _settingsOpenedFromDownloadDetail;
 
     /// <summary>书架页窗口宽度。</summary>
     private const double ShelfWindowWidth = 500;
@@ -48,6 +56,12 @@ public partial class MainWindow : Window
 
     /// <summary>阅读页窗口宽度。</summary>
     private const double ReaderWindowWidth = 1020;
+
+    /// <summary>下载详情页窗口宽度。</summary>
+    private const double DownloadDetailWindowWidth = 720;
+
+    /// <summary>跨页面下载结果提示的停留时长，略长于页面内提示以便用户注意到。</summary>
+    private static readonly TimeSpan DownloadResultNoticeDuration = TimeSpan.FromSeconds(4);
 
     /// <summary>
     /// 初始化主窗口并默认显示书架页。
@@ -71,13 +85,18 @@ public partial class MainWindow : Window
         TitleBarControl.BackRequested += TitleBarControl_BackRequested;
         TitleBarControl.SettingsRequested += TitleBarControl_SettingsRequested;
         TitleBarControl.RefreshRequested += TitleBarControl_RefreshRequested;
+        TitleBarControl.DownloadIndicatorRequested += TitleBarControl_DownloadIndicatorRequested;
         SettingsPageControl.SettingsSaved += SettingsPageControl_SettingsSaved;
         SettingsPageControl.BackRequested += SettingsPageControl_BackRequested;
         SettingsPageControl.OpdsSourcesChanged += SettingsPageControl_OpdsSourcesChanged;
         OpdsPageControl.PageTitleChanged += OpdsPageControl_PageTitleChanged;
         OpdsPageControl.BackLevelStateChanged += OpdsPageControl_BackLevelStateChanged;
         OpdsPageControl.BookAdded += OpdsPageControl_BookAdded;
+        OpdsPageControl.DownloadTaskCreated += OpdsPageControl_DownloadTaskCreated;
+        OpdsPageControl.DownloadFinished += OpdsPageControl_DownloadFinished;
         OpdsPageControl.FindExistingOpdsBook = FindExistingOpdsBook;
+        DownloadDetailPageControl.SetTasks(_activeDownloadTasks, _completedDownloadTasks);
+        _activeDownloadTasks.CollectionChanged += ActiveDownloadTasks_CollectionChanged;
         LoadShortcutSettings();
         ReaderPageControl.ApplyShortcutSettings(_shortcutSettings);
         LoadShelf();
@@ -874,6 +893,128 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 登记浏览页新建的下载任务，使用户离开浏览页后仍能在下载详情页中查看该任务。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">新建的下载任务。</param>
+    /// <returns>无。</returns>
+    private void OpdsPageControl_DownloadTaskCreated(object? sender, OpdsDownloadTask e)
+    {
+        e.PropertyChanged += DownloadTask_PropertyChanged;
+        _activeDownloadTasks.Insert(0, e);
+    }
+
+    /// <summary>
+    /// 跟踪单个下载任务的结束时机，并把它移出“正在下载”分区。
+    /// </summary>
+    /// <param name="sender">状态发生变化的下载任务。</param>
+    /// <param name="e">属性变化事件参数。</param>
+    /// <returns>无。</returns>
+    private void DownloadTask_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(OpdsDownloadTask.IsActive) ||
+            sender is not OpdsDownloadTask task ||
+            task.IsActive)
+        {
+            return;
+        }
+
+        // 任务结束后移入下载记录，让详情页的两个分区各自只表达一种语义。
+        task.PropertyChanged -= DownloadTask_PropertyChanged;
+        _activeDownloadTasks.Remove(task);
+        _completedDownloadTasks.Insert(0, task);
+    }
+
+    /// <summary>
+    /// 响应进行中的任务数量变化并刷新标题栏下载入口。
+    /// </summary>
+    /// <param name="sender">进行中的下载任务集合。</param>
+    /// <param name="e">集合变化事件参数。</param>
+    /// <returns>无。</returns>
+    private void ActiveDownloadTasks_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        int activeCount = _activeDownloadTasks.Count;
+        TitleBarControl.SetDownloadIndicator(activeCount > 0 ? $"正在下载 {activeCount} 项…" : null);
+    }
+
+    /// <summary>
+    /// 在浏览页不可见时用窗口级提示展示下载结果，避免用户切换页面后错过下载完成。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">包含结果消息与结束状态的事件参数。</param>
+    /// <returns>无。</returns>
+    private void OpdsPageControl_DownloadFinished(object? sender, OpdsDownloadFinishedEventArgs e)
+    {
+        InlineNotificationType type = e.Status switch
+        {
+            OpdsDownloadStatus.Completed => InlineNotificationType.Success,
+            OpdsDownloadStatus.Failed => InlineNotificationType.Warning,
+            _ => InlineNotificationType.Info
+        };
+
+        WindowNotification.Show(e.Message, type, DownloadResultNoticeDuration);
+    }
+
+    /// <summary>
+    /// 显示下载详情页，并记录该页面打开前显示的页面。
+    /// </summary>
+    /// <param name="preserveReturnTarget">为 <see langword="true"/> 时保留已有的返回目标，用于从设置页退回详情页。</param>
+    /// <returns>无。</returns>
+    private void ShowDownloadDetailPage(bool preserveReturnTarget = false)
+    {
+        if (DownloadDetailPageControl.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        // 从设置页返回详情页时不能再重算来源，否则会丢失详情页最初的返回目标。
+        if (!preserveReturnTarget)
+        {
+            _downloadDetailOpenedFromReader = ReaderPageControl.Visibility == Visibility.Visible;
+            _downloadDetailOpenedFromOpds = !_downloadDetailOpenedFromReader && OpdsPageControl.Visibility == Visibility.Visible;
+        }
+
+        WindowState = WindowState.Normal;
+        MinWidth = ShelfWindowWidth;
+        MinHeight = 600;
+        Width = DownloadDetailWindowWidth;
+        CenterWindowOnScreen();
+        ShelfPageControl.Visibility = Visibility.Collapsed;
+        ReaderPageControl.Visibility = Visibility.Collapsed;
+        SettingsPageControl.Visibility = Visibility.Collapsed;
+        OpdsPageControl.Visibility = Visibility.Collapsed;
+        DownloadDetailPageControl.Visibility = Visibility.Visible;
+        _isOpdsPageVisible = false;
+        SetTitleBarVisible(true);
+        TitleBarControl.SetBackButtonVisible(true);
+        TitleBarControl.SetBackButtonTarget();
+        TitleBarControl.SetBrowseControlsVisible(false);
+        TitleBarControl.ClearBookInfo();
+        UpdateWindowFrameClip();
+    }
+
+    /// <summary>
+    /// 从下载详情页返回它打开前所在的页面。
+    /// </summary>
+    /// <returns>无。</returns>
+    private void NavigateBackFromDownloadDetail()
+    {
+        if (_downloadDetailOpenedFromReader && !string.IsNullOrWhiteSpace(_currentBookPath))
+        {
+            ShowReaderPage();
+            return;
+        }
+
+        if (_downloadDetailOpenedFromOpds)
+        {
+            ShowOpdsBrowsePage();
+            return;
+        }
+
+        ShowShelfPage();
+    }
+
+    /// <summary>
     /// 显示 OPDS 浏览页并恢复其宽屏尺寸。
     /// </summary>
     /// <returns>无。</returns>
@@ -887,6 +1028,7 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Collapsed;
+        DownloadDetailPageControl.Visibility = Visibility.Collapsed;
         OpdsPageControl.Visibility = Visibility.Visible;
         _isOpdsPageVisible = true;
         SetTitleBarVisible(true);
@@ -913,6 +1055,7 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Visible;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Collapsed;
+        DownloadDetailPageControl.Visibility = Visibility.Collapsed;
         OpdsPageControl.Visibility = Visibility.Collapsed;
         _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
@@ -938,6 +1081,7 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Visible;
         SettingsPageControl.Visibility = Visibility.Collapsed;
+        DownloadDetailPageControl.Visibility = Visibility.Collapsed;
         OpdsPageControl.Visibility = Visibility.Collapsed;
         _isOpdsPageVisible = false;
         SetTitleBarVisible(!ReaderPageControl.IsReaderBackgroundTransparent);
@@ -962,6 +1106,9 @@ public partial class MainWindow : Window
 
         _settingsOpenedFromReader = ReaderPageControl.Visibility == Visibility.Visible;
         _settingsOpenedFromOpds = !_settingsOpenedFromReader && OpdsPageControl.Visibility == Visibility.Visible;
+        _settingsOpenedFromDownloadDetail = !_settingsOpenedFromReader &&
+                                            !_settingsOpenedFromOpds &&
+                                            DownloadDetailPageControl.Visibility == Visibility.Visible;
         SettingsPageControl.LoadSettings(_shortcutSettings);
         if (openOpdsTab)
         {
@@ -971,6 +1118,7 @@ public partial class MainWindow : Window
         ShelfPageControl.Visibility = Visibility.Collapsed;
         ReaderPageControl.Visibility = Visibility.Collapsed;
         SettingsPageControl.Visibility = Visibility.Visible;
+        DownloadDetailPageControl.Visibility = Visibility.Collapsed;
         OpdsPageControl.Visibility = Visibility.Collapsed;
         _isOpdsPageVisible = false;
         SetTitleBarVisible(true);
@@ -1040,6 +1188,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_settingsOpenedFromDownloadDetail)
+        {
+            // 保留详情页原有的返回目标，用户再次点击返回时才不会跳到错误的页面。
+            ShowDownloadDetailPage(preserveReturnTarget: true);
+            return;
+        }
+
         ShowShelfPage();
     }
 
@@ -1067,6 +1222,12 @@ public partial class MainWindow : Window
         if (SettingsPageControl.Visibility == Visibility.Visible)
         {
             NavigateBackFromSettings();
+            return;
+        }
+
+        if (DownloadDetailPageControl.Visibility == Visibility.Visible)
+        {
+            NavigateBackFromDownloadDetail();
             return;
         }
 
@@ -1110,6 +1271,17 @@ public partial class MainWindow : Window
     private void TitleBarControl_RefreshRequested(object? sender, RoutedEventArgs e)
     {
         OpdsPageControl.Refresh();
+    }
+
+    /// <summary>
+    /// 响应标题栏下载入口点击并打开下载详情页。
+    /// </summary>
+    /// <param name="sender">触发事件的标题栏控件。</param>
+    /// <param name="e">路由事件参数。</param>
+    /// <returns>无。</returns>
+    private void TitleBarControl_DownloadIndicatorRequested(object? sender, RoutedEventArgs e)
+    {
+        ShowDownloadDetailPage();
     }
 
     /// <summary>

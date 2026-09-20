@@ -1,0 +1,274 @@
+<UserControl
+    x:Class="BookRead.Pages.DownloadDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{DynamicResource AppBackground}">
+    <UserControl.Resources>
+        <!-- 进度条：细条加圆角，与书卡片封面上的进度覆盖层保持同一视觉语言。 -->
+        <Style x:Key="DownloadProgressBar" TargetType="ProgressBar">
+            <Setter Property="Height" Value="4" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="Background" Value="{DynamicResource ProgressTrack}" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="2">
+                            <Grid>
+                                <Rectangle x:Name="PART_Track" />
+                                <Rectangle
+                                    x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    Fill="{TemplateBinding Foreground}"
+                                    RadiusX="2"
+                                    RadiusY="2" />
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 卡片内次要操作：平时安静，悬浮时才提亮，避免与书名争夺注意力。 -->
+        <Style x:Key="QuietActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TaskCardBorder" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource Panel}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+        <!-- 列表项进场：淡入并轻微上移，让新出现的下载任务不生硬。 -->
+        <Style x:Key="TaskCardContainer" TargetType="ContentPresenter">
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <TranslateTransform Y="0" />
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <!-- 起始值写在动画里而不是样式里，动画未触发时卡片仍保持正常的可见状态。 -->
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.22" />
+                            <DoubleAnimation
+                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                From="6"
+                                To="0"
+                                Duration="0:0:0.22" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- 结束状态的颜色只在图标与文案上体现，卡片本身保持统一底色。 -->
+        <Style x:Key="TaskStatusIcon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSuccess}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                    <Setter Property="Foreground" Value="#F44336" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TaskStatusText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="12,0,0,0" />
+            <Setter Property="MaxWidth" Value="240" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSuccess}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                    <Setter Property="Foreground" Value="#F44336" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="ActiveTaskTemplate">
+            <Border Style="{StaticResource TaskCardBorder}" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <StackPanel Margin="0,0,64,0">
+                            <TextBlock
+                                Text="{Binding Title}"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextPrimary}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Margin="0,3,0,0"
+                                Text="{Binding SourceName}"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextMuted}"
+                                TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Content="取消"
+                            Style="{StaticResource QuietActionButton}"
+                            Tag="{Binding}"
+                            Click="CancelTask_Click" />
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar
+                            VerticalAlignment="Center"
+                            Style="{StaticResource DownloadProgressBar}"
+                            Value="{Binding Progress, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            MinWidth="36"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            TextAlignment="Right"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource Accent}"
+                            Text="{Binding Progress, StringFormat={}{0}%}" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="CompletedTaskTemplate">
+            <Border Style="{StaticResource TaskCardBorder}" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource TaskStatusIcon}" Text="{Binding StatusIcon}" />
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                        <TextBlock
+                            Text="{Binding Title}"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource TextPrimary}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Margin="0,3,0,0"
+                            Text="{Binding SourceName}"
+                            FontSize="11"
+                            Foreground="{DynamicResource TextMuted}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock
+                        Grid.Column="2"
+                        Style="{StaticResource TaskStatusText}"
+                        Text="{Binding StatusText}"
+                        ToolTip="{Binding StatusText}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid Margin="20,18">
+        <ScrollViewer
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <StackPanel x:Name="ActiveSection" Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="ActiveHeaderText"
+                        Margin="2,0,0,10"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextMuted}" />
+                    <ItemsControl
+                        x:Name="ActiveTaskList"
+                        ItemContainerStyle="{StaticResource TaskCardContainer}"
+                        ItemTemplate="{StaticResource ActiveTaskTemplate}" />
+                </StackPanel>
+                <StackPanel
+                    x:Name="CompletedSection"
+                    Margin="0,22,0,0"
+                    Visibility="Collapsed">
+                    <Grid Margin="2,0,0,10">
+                        <TextBlock
+                            x:Name="CompletedHeaderText"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextMuted}" />
+                        <Button
+                            HorizontalAlignment="Right"
+                            Content="清除"
+                            Style="{StaticResource QuietActionButton}"
+                            ToolTip="清除已结束的下载记录"
+                            Click="ClearCompleted_Click" />
+                    </Grid>
+                    <ItemsControl
+                        x:Name="CompletedTaskList"
+                        ItemContainerStyle="{StaticResource TaskCardContainer}"
+                        ItemTemplate="{StaticResource CompletedTaskTemplate}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <!-- 空状态：与浏览页空状态同构，切换页面时视觉语言保持一致。 -->
+        <Border
+            x:Name="EmptyStatePanel"
+            MaxWidth="460"
+            Margin="24"
+            Padding="32,26"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Background="{DynamicResource Panel}"
+            BorderBrush="{DynamicResource Line}"
+            BorderThickness="1"
+            CornerRadius="10"
+            IsHitTestVisible="False"
+            Visibility="Collapsed">
+            <StackPanel>
+                <Border
+                    Width="64"
+                    Height="64"
+                    HorizontalAlignment="Center"
+                    Background="{DynamicResource AccentSurface}"
+                    BorderBrush="{DynamicResource Line}"
+                    BorderThickness="1"
+                    CornerRadius="32">
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="26"
+                        Foreground="{DynamicResource Accent}"
+                        Text="&#xE896;" />
+                </Border>
+                <TextBlock
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    LineHeight="20"
+                    Foreground="{DynamicResource TextSecondary}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"
+                    Text="还没有下载任务。在 OPDS 书源中点击书籍即可开始下载。" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

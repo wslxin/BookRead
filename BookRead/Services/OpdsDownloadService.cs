@@ -52,7 +52,6 @@ internal sealed class OpdsDownloadException : Exception
 internal sealed class OpdsDownloadService : IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly SemaphoreSlim _downloadLock = new(1, 1);
 
     /// <summary>
     /// 使用默认 HTTP 客户端初始化服务。
@@ -220,10 +219,6 @@ internal sealed class OpdsDownloadService : IDisposable
             CleanupTemporaryFile(targetPath + ".part");
             throw;
         }
-        finally
-        {
-            _downloadLock.Release();
-        }
     }
 
     /// <summary>
@@ -331,7 +326,6 @@ internal sealed class OpdsDownloadService : IDisposable
     public void Dispose()
     {
         _httpClient.Dispose();
-        _downloadLock.Dispose();
     }
 }
 

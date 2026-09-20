@@ -9,6 +9,8 @@ namespace BookRead.Models;
 internal sealed class OpdsEntryViewModel : INotifyPropertyChanged
 {
     private ImageSource? _coverImage;
+    private bool _isDownloading;
+    private int _downloadProgress;
 
     /// <summary>创建 OPDS 条目视图模型。</summary>
     /// <param name="entry">要显示的条目。</param>
@@ -30,11 +32,37 @@ internal sealed class OpdsEntryViewModel : INotifyPropertyChanged
     /// <summary>获取条目在界面中的稳定标识。</summary>
     public string Key => $"{Entry.BookId}|{Entry.Title}|{Entry.NavigationUrl ?? Entry.Acquisitions.FirstOrDefault()?.Href ?? string.Empty}";
 
-    /// <summary>是否正在下载。</summary>
-    public bool IsDownloading { get; set; }
+    /// <summary>获取或设置一个值，该值指示条目是否正在下载。</summary>
+    public bool IsDownloading
+    {
+        get => _isDownloading;
+        set
+        {
+            if (_isDownloading == value)
+            {
+                return;
+            }
 
-    /// <summary>下载进度百分比，取值 0 到 100。</summary>
-    public int DownloadProgress { get; set; }
+            _isDownloading = value;
+            OnPropertyChanged(nameof(IsDownloading));
+        }
+    }
+
+    /// <summary>获取或设置下载进度百分比，取值 0 到 100。</summary>
+    public int DownloadProgress
+    {
+        get => _downloadProgress;
+        set
+        {
+            if (_downloadProgress == value)
+            {
+                return;
+            }
+
+            _downloadProgress = value;
+            OnPropertyChanged(nameof(DownloadProgress));
+        }
+    }
 
     /// <summary>下载完成后生成的本地文件路径。</summary>
     public string? DownloadedFilePath { get; set; }
@@ -44,6 +72,9 @@ internal sealed class OpdsEntryViewModel : INotifyPropertyChanged
 
     /// <summary>获取是否应在卡片上显示作者；目录条目不显示作者。</summary>
     public bool ShowAuthor => !Entry.IsNavigation && !string.IsNullOrWhiteSpace(Entry.Author);
+
+    /// <summary>获取是否应显示默认封面；封面为空或尚未加载完成时显示，加载成功后隐藏。</summary>
+    public bool ShowDefaultCover => _coverImage is null;
 
     /// <summary>获取条目作者；缺少作者信息或为目录条目时返回空字符串。</summary>
     public string Subtitle => Entry.Author ?? string.Empty;
@@ -60,6 +91,7 @@ internal sealed class OpdsEntryViewModel : INotifyPropertyChanged
 
         _coverImage = coverImage;
         OnPropertyChanged(nameof(CoverImage));
+        OnPropertyChanged(nameof(ShowDefaultCover));
     }
 
     /// <summary>触发指定属性的界面更新。</summary>

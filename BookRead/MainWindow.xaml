@@ -34,6 +34,9 @@
                 <pages:ReaderPage x:Name="ReaderPageControl" Visibility="Collapsed" />
                 <pages:SettingsPage x:Name="SettingsPageControl" Visibility="Collapsed" />
                 <pages:OpdsBrowsePage x:Name="OpdsPageControl" Visibility="Collapsed" />
+                <pages:DownloadDetailPage x:Name="DownloadDetailPageControl" Visibility="Collapsed" />
+                <!-- 下载在浏览页之外结束时用它提示结果；置于所有页面之上，任何页面切换后都能看到。 -->
+                <controls:InlineNotification x:Name="WindowNotification" />
             </Grid>
         </Grid>
     </Border>
