@@ -24,6 +24,7 @@ public partial class OpdsBrowsePage : UserControl
     private readonly OpdsSourceStore _sourceStore = new();
     private readonly OpdsClient _opdsClient;
     private readonly CoverImageCache _coverCache;
+    private readonly KavitaSearchService _kavitaSearchService = new();
     private readonly HttpClient _httpClient;
     private readonly List<OpdsSource> _sources = [];
     private readonly List<string?> _navigationHistory = [];
@@ -58,8 +59,8 @@ public partial class OpdsBrowsePage : UserControl
     /// <summary>下载失败通知的停留时长，长于成功提示以便用户看清失败原因。</summary>
     private static readonly TimeSpan DownloadFailureNoticeDuration = TimeSpan.FromSeconds(5);
 
-    /// <summary>“已在书架中”提示的停留时长，短于下载完成提示。</summary>
-    private static readonly TimeSpan ExistingBookNoticeDuration = TimeSpan.FromSeconds(2.2);
+    /// <summary>“已在书架中”提示的停留时长，需覆盖用户发现并点击跳转入口所需的时间。</summary>
+    private static readonly TimeSpan ExistingBookNoticeDuration = TimeSpan.FromSeconds(4);
 
     /// <summary>浏览页标题变化时触发，事件参数为最新标题。</summary>
     internal event EventHandler<string>? PageTitleChanged;
@@ -75,6 +76,9 @@ public partial class OpdsBrowsePage : UserControl
 
     /// <summary>浏览页完成下载并请求将书籍加入书架时触发。</summary>
     internal event EventHandler<OpdsBookAddedEventArgs>? BookAdded;
+
+    /// <summary>用户请求从“已在书架”提示跳转到书架并定位该书籍时触发。</summary>
+    internal event EventHandler<OpdsBookAddedEventArgs>? ExistingBookNavigationRequested;
 
     /// <summary>创建新的下载任务时触发，供主窗口在下载详情页中跨页面展示该任务。</summary>
     internal event EventHandler<OpdsDownloadTask>? DownloadTaskCreated;
@@ -296,12 +300,76 @@ public partial class OpdsBrowsePage : UserControl
     /// <param name="preserveHistory">是否保留当前导航历史；返回上一级时为 false。</param>
     /// <param name="pageStep">分页方向步进；下一页为 1，上一页为 -1，普通导航为 0。</param>
     /// <returns>表示异步加载过程的任务。</returns>
-    private async Task LoadPageAsync(
+    private Task LoadPageAsync(
         string? url,
         bool preserveHistory = true,
         int pageStep = 0)
     {
-        if (_selectedSource is null || _isNavigating)
+        if (_selectedSource is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return LoadPageCoreAsync(url, preserveHistory, pageStep, () => LoadPageContentAsync(url));
+    }
+
+    /// <summary>
+    /// 加载页面内容：Kavita 书源使用支持作者检索的网页搜索接口，其余情况使用标准 OPDS 请求。
+    /// </summary>
+    /// <param name="url">要加载的地址；增强搜索使用内部 kavita-search 地址。</param>
+    /// <returns>解析后的页面数据。</returns>
+    /// <exception cref="OpdsClientException">未选择书源、地址无效或加载失败时抛出。</exception>
+    private async Task<OpdsPage> LoadPageContentAsync(string? url)
+    {
+        if (_selectedSource is null)
+        {
+            throw new OpdsClientException("未选择书源。");
+        }
+
+        if (!KavitaSearchService.TryGetQuery(url, out string? query))
+        {
+            return await _opdsClient.LoadPageAsync(_selectedSource, url);
+        }
+
+        try
+        {
+            OpdsPage page = await _kavitaSearchService.SearchAsync(_selectedSource, query);
+
+            // 搜索结果页继续沿用当前 OpenSearch 模板，确保搜索框在增强搜索页面仍然可用。
+            return page with { SearchTemplateUrl = _searchTemplateUrl };
+        }
+        catch (KavitaSearchUnavailableException exception)
+        {
+            if (string.IsNullOrWhiteSpace(_searchTemplateUrl))
+            {
+                throw new OpdsClientException(exception.Message, exception);
+            }
+
+            // 服务器不支持网页搜索接口时回退到标准 OPDS 搜索，保证搜索功能仍然可用。
+            PageNotification.Show("该服务器不支持作者检索，已回退到普通搜索。", InlineNotificationType.Info, ExistingBookNoticeDuration);
+            string fallbackUrl = _searchTemplateUrl.Replace(
+                "{searchTerms}",
+                Uri.EscapeDataString(query),
+                StringComparison.OrdinalIgnoreCase);
+            return await _opdsClient.LoadPageAsync(_selectedSource, fallbackUrl);
+        }
+    }
+
+    /// <summary>
+    /// 渲染页面数据并维护导航历史与分页状态。
+    /// </summary>
+    /// <param name="url">本次加载的目标地址。</param>
+    /// <param name="preserveHistory">是否保留当前导航历史；返回上一级时为 false。</param>
+    /// <param name="pageStep">分页方向步进；下一页为 1，上一页为 -1，普通导航为 0。</param>
+    /// <param name="pageLoader">负责获取页面数据的委托。</param>
+    /// <returns>表示异步加载过程的任务。</returns>
+    private async Task LoadPageCoreAsync(
+        string? url,
+        bool preserveHistory,
+        int pageStep,
+        Func<Task<OpdsPage>> pageLoader)
+    {
+        if (_isNavigating)
         {
             return;
         }
@@ -334,7 +402,7 @@ public partial class OpdsBrowsePage : UserControl
 
         try
         {
-            OpdsPage page = await _opdsClient.LoadPageAsync(_selectedSource, url);
+            OpdsPage page = await pageLoader();
             string? searchTemplate = page.SearchTemplateUrl ?? _searchTemplateUrl;
             _searchTemplateUrl = searchTemplate;
             bool hasSearch = !string.IsNullOrWhiteSpace(searchTemplate);
@@ -513,12 +581,12 @@ public partial class OpdsBrowsePage : UserControl
     }
 
     /// <summary>
-    /// 执行 OpenSearch 搜索。
+    /// 执行搜索；Kavita 书源优先使用可检索作者的增强搜索，其余书源使用 OpenSearch。
     /// </summary>
     /// <returns>无。</returns>
     private void ExecuteSearch()
     {
-        if (_selectedSource is null || string.IsNullOrWhiteSpace(_searchTemplateUrl))
+        if (_selectedSource is null)
         {
             PageNotification.Show("当前目录不支持搜索。", InlineNotificationType.Warning);
             return;
@@ -530,6 +598,19 @@ public partial class OpdsBrowsePage : UserControl
             // 空关键词时给出明确反馈，避免用户误以为搜索按钮失效。
             PageNotification.Show("请输入要搜索的内容。", InlineNotificationType.Warning);
             SearchTextBox.Focus();
+            return;
+        }
+
+        // Kavita 书源改用网页搜索接口，使关键词可以匹配作者并列出其作品。
+        if (KavitaSearchService.TryCreateSearchUrl(_selectedSource, query, out string? kavitaSearchUrl))
+        {
+            _ = LoadPageAsync(kavitaSearchUrl);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_searchTemplateUrl))
+        {
+            PageNotification.Show("当前目录不支持搜索。", InlineNotificationType.Warning);
             return;
         }
 
@@ -624,13 +705,17 @@ public partial class OpdsBrowsePage : UserControl
         ShelfBook? existingBook = FindExistingBook(_selectedSource, viewModel.Entry);
         if (existingBook is not null)
         {
-            // 本地文件已存在时不再重复下载，但必须给出反馈，否则用户会以为点击没有生效。
+            // 本地文件已存在时不再重复下载，但必须给出反馈，否则用户会以为点击没有生效；
+            // 同时提供跳转入口，让用户能直接去书架中定位这本书，而不是收到提示后无处可去。
+            var addedEventArgs = new OpdsBookAddedEventArgs(_selectedSource, viewModel.Entry, existingBook.FilePath);
             PageNotification.Show(
                 $"《{viewModel.Entry.Title}》已在书架中。",
                 InlineNotificationType.Info,
-                ExistingBookNoticeDuration);
+                ExistingBookNoticeDuration,
+                "在书架中查看",
+                () => ExistingBookNavigationRequested?.Invoke(this, addedEventArgs));
 
-            BookAdded?.Invoke(this, new OpdsBookAddedEventArgs(_selectedSource, viewModel.Entry, existingBook.FilePath));
+            BookAdded?.Invoke(this, addedEventArgs);
             return;
         }
 

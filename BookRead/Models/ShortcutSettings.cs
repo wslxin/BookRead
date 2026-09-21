@@ -20,6 +20,9 @@ internal sealed class ShortcutSettings
     /// <summary>点击关闭按钮时是否最小化到系统托盘。</summary>
     public bool MinimizeToTrayOnClose { get; set; } = true;
 
+    /// <summary>下载完成并加入书架后是否自动打开书籍开始阅读。</summary>
+    public bool OpenAfterDownload { get; set; }
+
     /// <summary>下一页快捷键。</summary>
     public ShortcutBinding NextPage { get; set; } = new(Key.Right, ModifierKeys.None);
 
@@ -78,6 +81,7 @@ internal sealed class ShortcutSettings
         {
             ShowReaderToolbar = ShowReaderToolbar,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+            OpenAfterDownload = OpenAfterDownload,
             NextPage = NextPage,
             PreviousPage = PreviousPage,
             NextChapter = NextChapter,

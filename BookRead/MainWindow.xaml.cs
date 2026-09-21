@@ -75,6 +75,7 @@ public partial class MainWindow : Window
         ShelfPageControl.OpdsRequested += BrowseOpds_Click;
         ShelfPageControl.BookOpenRequested += ShelfPageControl_BookOpenRequested;
         ShelfPageControl.BookRemovalRequested += ShelfPageControl_BookRemovalRequested;
+        ShelfPageControl.BooksRemovalRequested += ShelfPageControl_BooksRemovalRequested;
         ShelfPageControl.BookRenameRequested += ShelfPageControl_BookRenameRequested;
         ShelfPageControl.BookLocationRequested += ShelfPageControl_BookLocationRequested;
         ReaderPageControl.ProgressChanged += ReaderPageControl_ProgressChanged;
@@ -92,6 +93,7 @@ public partial class MainWindow : Window
         OpdsPageControl.PageTitleChanged += OpdsPageControl_PageTitleChanged;
         OpdsPageControl.BackLevelStateChanged += OpdsPageControl_BackLevelStateChanged;
         OpdsPageControl.BookAdded += OpdsPageControl_BookAdded;
+        OpdsPageControl.ExistingBookNavigationRequested += OpdsPageControl_ExistingBookNavigationRequested;
         OpdsPageControl.DownloadTaskCreated += OpdsPageControl_DownloadTaskCreated;
         OpdsPageControl.DownloadFinished += OpdsPageControl_DownloadFinished;
         OpdsPageControl.FindExistingOpdsBook = FindExistingOpdsBook;
@@ -551,45 +553,102 @@ public partial class MainWindow : Window
     /// <returns>无。</returns>
     private async void ShelfPageControl_BookRemovalRequested(object? sender, BookOpenRequestedEventArgs e)
     {
+        await RemoveBooksFromShelfAsync([e.Book]);
+    }
+
+    /// <summary>
+    /// 确认用户的批量移除请求，并在持久化成功后刷新书架。
+    /// </summary>
+    /// <param name="sender">发起请求的书架页面。</param>
+    /// <param name="e">包含待移除书籍集合的事件参数。</param>
+    /// <returns>无。</returns>
+    private async void ShelfPageControl_BooksRemovalRequested(object? sender, BooksRemovalRequestedEventArgs e)
+    {
+        if (await RemoveBooksFromShelfAsync(e.Books))
+        {
+            // 批量移除结束后退出多选模式，避免留下已清空却仍显示勾选框的状态。
+            ShelfPageControl.SetSelectionMode(false);
+        }
+    }
+
+    /// <summary>
+    /// 确认并从书架移除指定书籍，必要时删除应用托管的下载文件。
+    /// </summary>
+    /// <param name="books">待移除的书籍集合。</param>
+    /// <returns>执行了移除操作时返回 <see langword="true"/>；用户取消或书架保存失败时返回 <see langword="false"/>。</returns>
+    private async Task<bool> RemoveBooksFromShelfAsync(IReadOnlyList<ShelfBook> books)
+    {
+        if (books.Count == 0)
+        {
+            return false;
+        }
+
+        int managedBookCount = books.Count(book => book.OpdsSourceId is not null);
+        string message = books.Count == 1
+            ? $"确定移除《{books[0].Title}》吗？"
+            : $"确定移除选中的 {books.Count} 本书吗？";
+
         // OPDS 下载书籍由应用托管，允许用户在移除记录时清理文件；本地书籍仍保持只移除记录。
+        string detail;
+        if (managedBookCount == 0)
+        {
+            detail = "这只会移除书架记录，原始文件会保留。";
+        }
+        else if (books.Count == 1)
+        {
+            detail = "可以选择仅移除书架记录，或同时删除应用托管目录中的下载文件。";
+        }
+        else
+        {
+            detail = $"其中 {managedBookCount} 本是应用托管的下载书籍，可以选择仅移除书架记录，或同时删除对应的下载文件。";
+        }
+
         ConfirmationDialogResult removalResult = ConfirmationDialog.ShowFor(
             this,
             new ConfirmationDialogOptions(
                 "从书架移除",
-                $"确定移除《{e.Book.Title}》吗？",
-                e.Book.OpdsSourceId is null
-                    ? "这只会移除书架记录，原始文件会保留。"
-                    : "可以选择仅移除书架记录，或同时删除应用托管目录中的下载文件。",
+                message,
+                detail,
                 ConfirmText: "仅移除记录",
-                AlternativeText: e.Book.OpdsSourceId is null ? null : "同时删除文件",
+                AlternativeText: managedBookCount > 0 ? "同时删除文件" : null,
                 IsDestructive: true));
         if (removalResult == ConfirmationDialogResult.Cancel)
         {
-            return;
+            return false;
         }
 
-        if (removalResult == ConfirmationDialogResult.Alternative && File.Exists(e.Book.FilePath))
+        List<(ShelfBook Book, string Message)> failedDeletions = [];
+        if (removalResult == ConfirmationDialogResult.Alternative)
         {
-            try
+            foreach (ShelfBook book in books)
             {
-                File.Delete(e.Book.FilePath);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                ConfirmationDialog.ShowAlert(
-                    this,
-                    "BookRead",
-                    $"书架记录已保留，但下载文件删除失败：{exception.Message}");
-                return;
+                if (!File.Exists(book.FilePath))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(book.FilePath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    failedDeletions.Add((book, exception.Message));
+                }
             }
         }
+
+        // 文件删除失败的书籍保留在书架中，避免记录消失后用户无从查找残留文件。
+        var failedPaths = new HashSet<string>(
+            failedDeletions.Select(item => item.Book.FilePath),
+            StringComparer.OrdinalIgnoreCase);
+        var removedPaths = new HashSet<string>(
+            books.Where(book => !failedPaths.Contains(book.FilePath)).Select(book => book.FilePath),
+            StringComparer.OrdinalIgnoreCase);
 
         // 先保存候选列表，确保写入失败时界面与内存中的原记录仍然存在。
         List<ShelfBook> remainingBooks = _shelfBooks
-            .Where(book => !string.Equals(
-                book.FilePath,
-                e.Book.FilePath,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(book => !removedPaths.Contains(book.FilePath))
             .ToList();
 
         try
@@ -602,12 +661,25 @@ public partial class MainWindow : Window
                 this,
                 "BookRead",
                 $"书架更新失败：{exception.Message}");
-            return;
+            return false;
         }
 
         _shelfBooks.Clear();
         _shelfBooks.AddRange(remainingBooks);
         ShelfPageControl.SetBooks(_shelfBooks);
+
+        if (failedDeletions.Count > 0)
+        {
+            string details = string.Join(
+                Environment.NewLine,
+                failedDeletions.Select(item => $"《{item.Book.Title}》：{item.Message}"));
+            ConfirmationDialog.ShowAlert(
+                this,
+                "BookRead",
+                $"以下书籍的文件删除失败，已保留在书架中：{Environment.NewLine}{details}");
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -856,6 +928,24 @@ public partial class MainWindow : Window
                 "BookRead",
                 $"书籍已下载，但书架数据保存失败：{exception.Message}");
         }
+
+        // 设置开启时，书籍下载并入库后直接打开阅读，省去从书架再点一次的步骤。
+        if (_shortcutSettings.OpenAfterDownload)
+        {
+            await OpenAndRememberBookAsync(e.FilePath);
+        }
+    }
+
+    /// <summary>
+    /// 从浏览页的“已在书架”提示跳转到书架页，并定位到该书籍所在行。
+    /// </summary>
+    /// <param name="sender">发起事件的浏览页面。</param>
+    /// <param name="e">包含目标书源、条目与本地文件路径的事件参数。</param>
+    /// <returns>无。</returns>
+    private void OpdsPageControl_ExistingBookNavigationRequested(object? sender, OpdsBookAddedEventArgs e)
+    {
+        ShowShelfPage();
+        ShelfPageControl.FocusBook(e.FilePath);
     }
 
     /// <summary>

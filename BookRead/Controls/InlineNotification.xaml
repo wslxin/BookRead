@@ -6,28 +6,48 @@
     VerticalAlignment="Bottom"
     Margin="0,0,0,18"
     MaxWidth="520"
-    IsHitTestVisible="False">
+    IsHitTestVisible="False"
+    MouseEnter="InlineNotification_MouseEnter"
+    MouseLeave="InlineNotification_MouseLeave">
+    <UserControl.Resources>
+        <!-- 提示内的操作入口保持低存在感：只用强调色文字表达可点击，不与提示正文争夺注意力。 -->
+        <Style
+            x:Key="NotificationActionButton"
+            TargetType="Button"
+            BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="12,0,0,0" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
     <Border
         x:Name="NotificationBorder"
         Padding="12,8"
         Background="{DynamicResource Panel}"
         BorderBrush="{DynamicResource Line}"
         BorderThickness="1"
-        CornerRadius="5">
+        CornerRadius="5"
+        MouseLeftButtonUp="NotificationBorder_MouseLeftButtonUp">
         <StackPanel Orientation="Horizontal" MaxWidth="496">
             <TextBlock
                 x:Name="IconText"
                 FontFamily="Segoe Fluent Icons"
                 FontSize="13"
                 Foreground="{DynamicResource TextPrimary}"
-                VerticalAlignment="Top"
-                Margin="0,1,8,0" />
+                VerticalAlignment="Center"
+                Margin="0,0,8,0" />
             <TextBlock
                 x:Name="MessageText"
                 Foreground="{DynamicResource TextPrimary}"
                 TextWrapping="Wrap"
                 MaxWidth="448"
                 VerticalAlignment="Center" />
+            <Button
+                x:Name="ActionButton"
+                Style="{StaticResource NotificationActionButton}"
+                Visibility="Collapsed"
+                Click="ActionButton_Click" />
         </StackPanel>
     </Border>
 </UserControl>

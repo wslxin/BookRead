@@ -78,6 +78,7 @@ public partial class SettingsPage : UserControl
         SelectSettingsTab(SettingsTab.Shortcuts);
         ShowReaderToolbarCheckBox.IsChecked = _editingSettings.ShowReaderToolbar;
         MinimizeToTrayOnCloseCheckBox.IsChecked = _editingSettings.MinimizeToTrayOnClose;
+        OpenAfterDownloadCheckBox.IsChecked = _editingSettings.OpenAfterDownload;
         UpdateShortcutTextBoxes();
         LoadOpdsSources();
     }
@@ -213,6 +214,7 @@ public partial class SettingsPage : UserControl
     {
         _editingSettings.ShowReaderToolbar = ShowReaderToolbarCheckBox.IsChecked == true;
         _editingSettings.MinimizeToTrayOnClose = MinimizeToTrayOnCloseCheckBox.IsChecked == true;
+        _editingSettings.OpenAfterDownload = OpenAfterDownloadCheckBox.IsChecked == true;
         ShortcutAction[] actions = Enum.GetValues<ShortcutAction>();
         var usedBindings = new Dictionary<ShortcutBinding, ShortcutAction>();
         foreach (ShortcutAction action in actions)

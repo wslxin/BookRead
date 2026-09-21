@@ -216,6 +216,13 @@
                                 <TextBlock Text="取消勾选后，点击关闭按钮将直接退出 BookRead" Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="0,4,0,0" />
                             </StackPanel>
                         </CheckBox>
+                        <TextBlock Text="下载行为" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold" Margin="0,18,0,10" />
+                        <CheckBox x:Name="OpenAfterDownloadCheckBox" Style="{StaticResource SettingsCheckBox}" FontSize="13" IsChecked="False">
+                            <StackPanel>
+                                <TextBlock Text="下载完成后自动打开阅读" />
+                                <TextBlock Text="下载并加入书架后立即打开这本书，直接开始阅读" Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </CheckBox>
                     </StackPanel>
                     <StackPanel x:Name="OpdsSettingsPanel" Visibility="Collapsed">
                         <Grid Margin="0,0,0,10">
