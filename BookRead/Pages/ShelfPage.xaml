@@ -130,23 +130,26 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-        <!-- 使用 Hidden 预留操作区宽度，避免鼠标移入或移出时书籍信息发生横向跳动。 -->
+        <!-- 行内操作按钮默认收起且不占列宽，未悬停时书籍信息可以铺满整行剩余宽度；悬停后再按原有布局在右侧展开。 -->
         <Style
             x:Key="ShelfRowActionButton"
             TargetType="Button"
             BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Visibility" Value="Hidden" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
                 <DataTrigger
                     Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}"
                     Value="True">
                     <Setter Property="Visibility" Value="Visible" />
                 </DataTrigger>
-                <!-- 多选模式下行内操作暂时收起，但仍占位，避免整行内容左右跳动。 -->
+                <!-- 多选模式下行内操作让位给勾选框与批量删除，此时同样不占据列宽。 -->
                 <DataTrigger
                     Binding="{Binding IsSelectionMode, RelativeSource={RelativeSource AncestorType={x:Type pages:ShelfPage}}}"
                     Value="True">
-                    <Setter Property="Visibility" Value="Hidden" />
+                    <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -276,7 +279,7 @@
                             <Grid Background="Transparent">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
@@ -330,10 +333,7 @@
                                 </Button>
                                 <Button
                                     Grid.Column="2"
-                                    Width="32"
-                                    Height="32"
                                     Margin="8,0,0,0"
-                                    Padding="0"
                                     Tag="{Binding}"
                                     Style="{StaticResource ShelfRowActionButton}"
                                     ToolTip="重命名"
@@ -346,10 +346,7 @@
                                 </Button>
                                 <Button
                                     Grid.Column="3"
-                                    Width="32"
-                                    Height="32"
                                     Margin="8,0,0,0"
-                                    Padding="0"
                                     Tag="{Binding}"
                                     Style="{StaticResource ShelfRowActionButton}"
                                     ToolTip="打开所在文件夹"
@@ -362,10 +359,7 @@
                                 </Button>
                                 <Button
                                     Grid.Column="4"
-                                    Width="32"
-                                    Height="32"
                                     Margin="8,0,0,0"
-                                    Padding="0"
                                     Tag="{Binding}"
                                     ToolTip="从书架移除"
                                     Click="RemoveShelfBook_Click">

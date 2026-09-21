@@ -26,6 +26,18 @@ internal sealed class OpdsDownloadState
 }
 
 /// <summary>
+/// 定义下载目标文件与既有文件同名时的处理方式。
+/// </summary>
+internal enum OpdsDownloadConflictResolution
+{
+    /// <summary>保留既有文件，把新下载的内容另存为带序号的新文件。</summary>
+    KeepBoth,
+
+    /// <summary>用新下载的内容替换既有文件。</summary>
+    Overwrite
+}
+
+/// <summary>
 /// 表示 OPDS 下载服务抛出的、可直接展示给用户的异常。
 /// </summary>
 internal sealed class OpdsDownloadException : Exception
@@ -139,6 +151,7 @@ internal sealed class OpdsDownloadService : IDisposable
     /// <param name="source">下载来源书源。</param>
     /// <param name="entry">下载条目。</param>
     /// <param name="link">下载链接。</param>
+    /// <param name="conflictResolution">目标文件与既有文件同名时的处理方式。</param>
     /// <param name="progress">下载进度报告器；可为空。</param>
     /// <param name="cancellationToken">取消下载的令牌。</param>
     /// <returns>表示下载过程的任务；结果为最终文件路径。</returns>
@@ -148,6 +161,7 @@ internal sealed class OpdsDownloadService : IDisposable
         OpdsSource source,
         OpdsEntry entry,
         OpdsLink link,
+        OpdsDownloadConflictResolution conflictResolution,
         IProgress<OpdsDownloadState>? progress,
         CancellationToken cancellationToken)
     {
@@ -160,7 +174,10 @@ internal sealed class OpdsDownloadService : IDisposable
             throw new OpdsDownloadException("下载地址无效。");
         }
 
-        string targetPath = GetTargetPath(source.Name, entry.Title, link.MediaType, link.Href);
+        // 覆盖模式直接使用基础路径，副本模式改挑一个尚未占用的序号路径；两者都在下载开始前确定。
+        string targetPath = conflictResolution == OpdsDownloadConflictResolution.Overwrite
+            ? GetBaseTargetPath(source.Name, entry.Title, link.MediaType, link.Href)
+            : GetTargetPath(source.Name, entry.Title, link.MediaType, link.Href);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
@@ -205,7 +222,8 @@ internal sealed class OpdsDownloadService : IDisposable
                 }
             }
 
-            File.Move(temporaryPath, targetPath, overwrite: false);
+            // 新内容先完整写入 .part 文件，下载成功后才落位，覆盖模式下也不会因中途失败而破坏既有文件。
+            File.Move(temporaryPath, targetPath, overwrite: conflictResolution == OpdsDownloadConflictResolution.Overwrite);
             progress?.Report(new OpdsDownloadState(entry.Title) { ProgressPercent = 100 });
             return targetPath;
         }
@@ -236,29 +254,46 @@ internal sealed class OpdsDownloadService : IDisposable
     }
 
     /// <summary>
-    /// 生成目标文件路径。
+    /// 生成目标文件路径；同名文件已存在时自动追加序号避让，从而保留既有文件。
     /// </summary>
     /// <param name="sourceName">书源名称。</param>
     /// <param name="bookTitle">书籍标题。</param>
     /// <param name="mediaType">下载链接媒体类型。</param>
     /// <param name="href">下载地址。</param>
-    /// <returns>受支持格式的目标文件路径。</returns>
+    /// <returns>受支持格式且当前未被占用的目标文件路径。</returns>
     /// <exception cref="OpdsDownloadException">格式不受支持或标题为空时抛出。</exception>
     internal static string GetTargetPath(string sourceName, string bookTitle, string? mediaType, string href)
+    {
+        string basePath = GetBaseTargetPath(sourceName, bookTitle, mediaType, href);
+        string directory = Path.GetDirectoryName(basePath)!;
+        string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(basePath);
+        string extension = Path.GetExtension(basePath);
+        string finalCandidate = basePath;
+        var counter = 1;
+        while (File.Exists(finalCandidate))
+        {
+            finalCandidate = Path.Combine(directory, $"{fileNameWithoutExtension} ({counter++}){extension}");
+        }
+
+        return finalCandidate;
+    }
+
+    /// <summary>
+    /// 生成不含避让序号的基础目标文件路径，用于检测下载目录中是否已存在同名文件。
+    /// </summary>
+    /// <param name="sourceName">书源名称。</param>
+    /// <param name="bookTitle">书籍标题。</param>
+    /// <param name="mediaType">下载链接媒体类型。</param>
+    /// <param name="href">下载地址。</param>
+    /// <returns>受支持格式的基础目标文件路径；无论同名文件是否存在都返回同一路径。</returns>
+    /// <exception cref="OpdsDownloadException">格式不受支持或标题为空时抛出。</exception>
+    internal static string GetBaseTargetPath(string sourceName, string bookTitle, string? mediaType, string href)
     {
         string extension = GetExtension(mediaType, href)
             ?? throw new OpdsDownloadException("没有受支持的下载格式。");
         string cleanTitle = CleanFileName(string.IsNullOrWhiteSpace(bookTitle) ? "未命名书籍" : bookTitle);
         string directory = Path.Combine(GetBooksRootDirectory(), CleanFileName(sourceName));
-        string candidate = Path.Combine(directory, $"{cleanTitle}{extension}");
-        string finalCandidate = candidate;
-        var counter = 1;
-        while (File.Exists(finalCandidate))
-        {
-            finalCandidate = Path.Combine(directory, $"{cleanTitle} ({counter++}){extension}");
-        }
-
-        return finalCandidate;
+        return Path.Combine(directory, $"{cleanTitle}{extension}");
     }
 
     /// <summary>

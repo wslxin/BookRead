@@ -88,6 +88,9 @@ public partial class OpdsBrowsePage : UserControl
 
     internal Func<OpdsSource, OpdsEntry, ShelfBook?> FindExistingOpdsBook = (_, _) => null;
 
+    /// <summary>按文件路径查找书架中正在使用该文件的书籍；默认实现返回 <see langword="null"/>。</summary>
+    internal Func<string, ShelfBook?> FindShelfBookByPath = _ => null;
+
     /// <summary>
     /// 初始化 OPDS 浏览页面。
     /// </summary>
@@ -719,7 +722,69 @@ public partial class OpdsBrowsePage : UserControl
             return;
         }
 
-        _ = DownloadAsync(_selectedSource, viewModel, preferredLink);
+        // 与既有文件同名时先让用户决定如何处理，用户取消时直接结束本次请求。
+        OpdsDownloadConflictResolution? conflictResolution = ResolveDownloadConflict(
+            _selectedSource,
+            viewModel.Entry,
+            preferredLink);
+        if (conflictResolution is null)
+        {
+            return;
+        }
+
+        _ = DownloadAsync(_selectedSource, viewModel, preferredLink, conflictResolution.Value);
+    }
+
+    /// <summary>
+    /// 检查下载目录中是否已存在同名文件，并在冲突时询问用户如何处理。
+    /// </summary>
+    /// <param name="source">目标书源。</param>
+    /// <param name="entry">待下载条目。</param>
+    /// <param name="link">条目的下载链接。</param>
+    /// <returns>用户选定的冲突处理方式；没有冲突时返回保留两份，用户取消时返回 <see langword="null"/>。</returns>
+    private OpdsDownloadConflictResolution? ResolveDownloadConflict(OpdsSource source, OpdsEntry entry, OpdsLink link)
+    {
+        string basePath = OpdsDownloadService.GetBaseTargetPath(source.Name, entry.Title, link.MediaType, link.Href);
+        if (!File.Exists(basePath))
+        {
+            return OpdsDownloadConflictResolution.KeepBoth;
+        }
+
+        string fileName = Path.GetFileName(basePath);
+        string? occupyingBookTitle = FindShelfBookByPath(basePath)?.Title;
+
+        // 同名文件若正被书架中的其他书籍使用，就不提供覆盖选项：覆盖会替换那本书的内容。
+        if (occupyingBookTitle is not null)
+        {
+            ConfirmationDialogResult occupiedResult = ConfirmationDialog.ShowFor(
+                Window.GetWindow(this),
+                new ConfirmationDialogOptions(
+                    "文件已存在",
+                    $"下载目录中已经存在文件“{fileName}”，它正被书架中的《{occupyingBookTitle}》使用。",
+                    "为避免影响已经加入书架的书籍，本次下载会另存为带序号的新文件。",
+                    ConfirmText: "另存为副本",
+                    CancelText: "取消"));
+            return occupiedResult == ConfirmationDialogResult.Confirm
+                ? OpdsDownloadConflictResolution.KeepBoth
+                : null;
+        }
+
+        ConfirmationDialogResult result = ConfirmationDialog.ShowFor(
+            Window.GetWindow(this),
+            new ConfirmationDialogOptions(
+                "文件已存在",
+                $"下载目录中已经存在文件“{fileName}”。",
+                "覆盖会用新下载的内容替换该文件；另存为副本会保留现有文件，并为新文件添加序号。",
+                ConfirmText: "覆盖现有文件",
+                CancelText: "取消",
+                IsDestructive: true,
+                AlternativeText: "另存为副本"));
+        return result switch
+        {
+            ConfirmationDialogResult.Confirm => OpdsDownloadConflictResolution.Overwrite,
+            ConfirmationDialogResult.Alternative => OpdsDownloadConflictResolution.KeepBoth,
+            _ => null
+        };
     }
 
     /// <summary>
@@ -807,8 +872,13 @@ public partial class OpdsBrowsePage : UserControl
     /// <param name="source">目标 OPDS 书源。</param>
     /// <param name="viewModel">待下载条目的视图模型。</param>
     /// <param name="link">条目的下载链接。</param>
+    /// <param name="conflictResolution">目标文件与既有文件同名时用户选定的处理方式。</param>
     /// <returns>表示异步下载过程的任务。</returns>
-    private async Task DownloadAsync(OpdsSource source, OpdsEntryViewModel viewModel, OpdsLink link)
+    private async Task DownloadAsync(
+        OpdsSource source,
+        OpdsEntryViewModel viewModel,
+        OpdsLink link,
+        OpdsDownloadConflictResolution conflictResolution)
     {
         viewModel.IsDownloading = true;
 
@@ -838,6 +908,7 @@ public partial class OpdsBrowsePage : UserControl
                 source,
                 viewModel.Entry,
                 link,
+                conflictResolution,
                 progress,
                 cancellationTokenSource.Token);
             viewModel.DownloadedFilePath = filePath;

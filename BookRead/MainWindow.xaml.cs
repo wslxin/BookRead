@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         OpdsPageControl.DownloadTaskCreated += OpdsPageControl_DownloadTaskCreated;
         OpdsPageControl.DownloadFinished += OpdsPageControl_DownloadFinished;
         OpdsPageControl.FindExistingOpdsBook = FindExistingOpdsBook;
+        OpdsPageControl.FindShelfBookByPath = FindShelfBookByPath;
         DownloadDetailPageControl.SetTasks(_activeDownloadTasks, _completedDownloadTasks);
         _activeDownloadTasks.CollectionChanged += ActiveDownloadTasks_CollectionChanged;
         LoadShortcutSettings();
@@ -596,11 +597,11 @@ public partial class MainWindow : Window
         }
         else if (books.Count == 1)
         {
-            detail = "可以选择仅移除书架记录，或同时删除应用托管目录中的下载文件。";
+            detail = "可以选择仅移除书架记录，或同时删除应用托管目录中的下载文件；本地导入的原始文件不会受到影响。";
         }
         else
         {
-            detail = $"其中 {managedBookCount} 本是应用托管的下载书籍，可以选择仅移除书架记录，或同时删除对应的下载文件。";
+            detail = $"其中 {managedBookCount} 本是应用托管的下载书籍，可以选择仅移除书架记录，或同时删除这些下载文件；本地导入的原始文件不会受到影响。";
         }
 
         ConfirmationDialogResult removalResult = ConfirmationDialog.ShowFor(
@@ -610,7 +611,7 @@ public partial class MainWindow : Window
                 message,
                 detail,
                 ConfirmText: "仅移除记录",
-                AlternativeText: managedBookCount > 0 ? "同时删除文件" : null,
+                AlternativeText: managedBookCount > 0 ? "同时删除下载文件" : null,
                 IsDestructive: true));
         if (removalResult == ConfirmationDialogResult.Cancel)
         {
@@ -620,8 +621,15 @@ public partial class MainWindow : Window
         List<(ShelfBook Book, string Message)> failedDeletions = [];
         if (removalResult == ConfirmationDialogResult.Alternative)
         {
+            string managedRootDirectory = OpdsDownloadService.GetBooksRootDirectory();
             foreach (ShelfBook book in books)
             {
+                // 只有应用托管的下载文件才允许删除；本地导入书籍的路径指向用户自己的文件，必须原样保留。
+                if (!IsManagedDownloadFile(book.OpdsSourceId, book.FilePath, managedRootDirectory))
+                {
+                    continue;
+                }
+
                 if (!File.Exists(book.FilePath))
                 {
                     continue;
@@ -680,6 +688,36 @@ public partial class MainWindow : Window
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// 判断书籍文件是否属于应用托管目录中的下载文件。
+    /// </summary>
+    /// <param name="opdsSourceId">书籍所属的 OPDS 书源标识；本地导入书籍为 <see langword="null"/>。</param>
+    /// <param name="filePath">书籍文件的绝对路径。</param>
+    /// <param name="managedRootDirectory">应用托管目录的绝对路径。</param>
+    /// <returns>书籍来自 OPDS 下载且文件位于托管目录内时返回 <see langword="true"/>；否则返回 <see langword="false"/>。</returns>
+    /// <exception cref="ArgumentException"><paramref name="filePath"/> 或 <paramref name="managedRootDirectory"/> 为空字符串时抛出。</exception>
+    private static bool IsManagedDownloadFile(Guid? opdsSourceId, string filePath, string managedRootDirectory)
+    {
+        // 本地导入的书籍没有书源标识，其路径始终指向用户自己的文件。
+        if (opdsSourceId is null)
+        {
+            return false;
+        }
+
+        // 书源标识可能来自历史数据，这里再次确认文件确实位于托管目录内，避免误删用户目录中的文件。
+        string relativePath = Path.GetRelativePath(
+            Path.GetFullPath(managedRootDirectory),
+            Path.GetFullPath(filePath));
+
+        if (Path.IsPathRooted(relativePath))
+        {
+            return false;
+        }
+
+        return !relativePath.Equals("..", StringComparison.Ordinal)
+            && !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -891,6 +929,17 @@ public partial class MainWindow : Window
             book.OpdsSourceId == source.Id &&
             string.Equals(book.OpdsBookId, entry.BookId, StringComparison.Ordinal) &&
             File.Exists(book.FilePath));
+    }
+
+    /// <summary>
+    /// 查找书架中正在使用指定文件的书籍，用于判断下载目录中的同名文件是否已被占用。
+    /// </summary>
+    /// <param name="filePath">要检查的书籍文件路径。</param>
+    /// <returns>使用该文件的书籍记录；没有任何记录使用时返回 <see langword="null"/>。</returns>
+    private ShelfBook? FindShelfBookByPath(string filePath)
+    {
+        return _shelfBooks.FirstOrDefault(book =>
+            string.Equals(book.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
